@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "Mist"
+version = "0.1.0"
+description = """
+Mist is defined as 'when there is such obscurity and the associated visibility is equal to or exceeds 1000 m.' Like fog, mist is still the result of the suspension of water droplets, but simply at a lower density.
+Mist typically is quicker to dissipate and can rapidly disappear with even slight winds, it's also what you see when you can see your breath on a cold day.
+
+aka Music Ingestion & Storage Tool
+"""
+authors = [
+  { name="Zexyp", email="placeholder@localhost.cz" },
+]
+requires-python = ">=3.10"
+#license-files = ["LICEN[CS]E*"]
+
+[project.urls]
+Homepage = "https://github.com/Zexyp/mist"
+Issues = "https://github.com/Zexyp/mist/issues"
+
+[project.scripts]
+mist = "mist.__main__:main"
+
