@@ -12,7 +12,7 @@ Mist typically is quicker to dissipate and can rapidly disappear with even sligh
 ## Usage
 Have you heard of git?
 
-Would you mind if I use YapTeX for that? :3
+Would you mind if I use YapTeX for docs? :3
 
 ## Installation
 I'm not paid enough. I guess try this:
@@ -30,3 +30,6 @@ apt install ffmpeg
 
 #### Windows
 You will have to go down the rabbit hole...
+
+> [!CAUTION]
+> Undefined operations lead to undefined behavior.

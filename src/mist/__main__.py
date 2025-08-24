@@ -10,17 +10,11 @@ from . import name_purifier
 
 MAX_DURATION = 600
 
-def shrimplify_name(entry):
-    if entry['channel'] is None:
-        print('channel none at \'' + entry['id'] + '\'')
-
-    name = name_purifier.purify(entry['id'])
-
-    return name
-
 def sanitize_name(name):
     replacement_char = '_'
-    return name.replace('\\', replacement_char).replace('/', replacement_char).replace('*', replacement_char).replace('?', replacement_char).replace('"', replacement_char).replace('<', replacement_char).replace('>', replacement_char).replace('|', replacement_char)
+    for ch in ['\\', '/', '*', '?', '"', '<', '>', '|']:
+        name = name.replace(ch, replacement_char)
+    return name
 
 def fix_names():
     for filename in [f for f in os.listdir(DIRECTORY_OUTPUT) if os.path.isfile(os.path.join(DIRECTORY_OUTPUT, f))]:
@@ -30,36 +24,6 @@ def fix_names():
         new_name = name_purifier.purify(ytid)
         new_name = sanitize_name(new_name)
         os.rename(os.path.join(DIRECTORY_OUTPUT, filename), os.path.join(DIRECTORY_OUTPUT, f"{new_name}.{ytid}{ext}"))
-
-def get_remote_list(url):
-    list_options = {
-        'extract_flat': True,
-        'download': False,
-        #'playliststart': 0,
-        #'playlistend': 10,
-        #'ignore_no_formats_error': True,
-        'quiet': True,
-    }
-
-    print("downloading list...")
-
-    with YoutubeDL(list_options) as ytdl:
-        data = ytdl.extract_info(url)
-    
-    return data['entries']
-
-def get_local_ids(directory):
-    print("reading local ids...")
-    
-    return [f.split('.')[-2] for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
-
-def detect_duplicate(items):
-    print("checking duplicates...")
-    
-    # shrimple detect
-    duplicates = [item for item, count in collections.Counter(items).items() if count > 1]
-    if duplicates:
-        print("\n".join([f"    {d}" for d in duplicates]))
 
 def process_entry(entry, out_directory):    
     video_options = {
@@ -130,23 +94,25 @@ def old_main():
 import sys
 
 from . import cli
-from .log import log_error, log_warning, log_print
+from .log import log_error, log_warning, log_print, notify_failed, notify_death
 from .errors import MistError
 
 def main():
     try:
         cli.run()
-    except MistError as me:
-        log_error(str(me))
+    except MistError as e:
+        log_error(str(e))
+        sys.exit(1)
+    except AssertionError as e:
+        log_error(repr(e))
+        sys.exit(1)
+    except NotImplementedError as e:
+        notify_failed()
+        log_error("lazy fuck detected")
+        log_error(repr(e))
         sys.exit(1)
     except Exception:
-        # craptastic dev thingy
-        try:
-            import os
-            import playsound
-            playsound.playsound(os.path.join(os.path.dirname(__file__), "res/Turret_turret_disabled_2.wav"), False)
-        except ImportError:
-            log_print("no sound for u :(")
+        notify_death()
         log_error("whoopsie")
         raise
     

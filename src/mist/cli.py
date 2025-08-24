@@ -39,9 +39,17 @@ def build_parser_fetch(subparsers):
 def build_parser_pull(subparsers):
     parser = subparsers.add_parser("pull")
     parser.add_argument("remote", nargs='?')
-    parser.add_argument("--all", action="store_true")
     parser.add_argument("--set-upstream", action="store_true")
-    parser.set_defaults(func=lambda args: pull(args.remote, all=args.all, set_upstream=args.set_upstream))
+    parser.set_defaults(func=lambda args: pull(args.remote, set_upstream=args.set_upstream))
+
+    return parser
+
+def build_parser_clone(subparsers):
+    parser = subparsers.add_parser("clone")
+    parser.add_argument("url")
+    parser.add_argument("dir", nargs='?')
+    parser.add_argument("--origin")
+    parser.set_defaults(func=lambda args: clone(args.url, output=args.dir, origin=args.origin))
 
     return parser
 
@@ -50,6 +58,7 @@ def build_parser():
 
     from importlib.metadata import version
     parser.add_argument('--version', action='version', version=f"Mist {version(__package__)}")
+    parser.add_argument("-C")
 
     subparsers = parser.add_subparsers()
 
@@ -59,11 +68,16 @@ def build_parser():
     parser_fetch = build_parser_fetch(subparsers)
     parser_status = subparsers.add_parser("status")
     parser_status.set_defaults(func=lambda args: status())
-    #parser_merge = subparsers.add_parser("merge")
+    parser_checkout = subparsers.add_parser("checkout")
+    parser_checkout.add_argument("remote")
+    parser_checkout.set_defaults(func=lambda args: checkout(remote=args.remote))
+    parser_clone = build_parser_clone(subparsers)
+    parser_merge = subparsers.add_parser("merge")
+    parser_merge.add_argument("remote")
+    parser_merge.set_defaults(func=lambda args: merge(remote=args.remote))
+    parser_pull = build_parser_pull(subparsers)
     #parser_diff = subparsers.add_parser("diff")
     #parser_submodule = subparsers.add_parser("submodule")
-    #parser_pull = subparsers.add_parser("pull")
-    #parser_pull = subparsers.add_parser("clone")
     #parser_config = subparsers.add_parser("config") # locations: global, system, local, worktree?
 
     parser_list = subparsers.add_parser("list", aliases=["ls"])
@@ -80,72 +94,22 @@ def run():
     parser = build_parser()
 
     args = parser.parse_args()
+    prev_dir = None
+    if args.C:
+        assert os.path.isdir(args.C)
+        prev_dir = os.getcwd()
+        os.chdir(args.C)
 
     if hasattr(args, 'func'):
         args.func(args)
     else:
         parser.print_help()
 
+    if prev_dir:
+        os.chdir(prev_dir)
+
 import string
 import re
-
-def print_progress_bar(amount: int | float, total: int | float,
-                       prefix: str = "",
-                       suffix: str = "",
-                       decimals: int = 0,
-                       percent_decimals: int = 1,
-                       width: int | None = None, # automatic if set to None, 0 to force bar length
-                       bar_length: int = 80,
-                       fill: str = '█',
-                       empty: str = '-',
-                       template: str ="$prefix |$bar| $percent % ($amount/$total) $suffix",
-                       finish: bool | None = None # if set to None finishing action is automatic
-                       ):
-    """
-    this function is not just *stolen*, it's also improved
-    it's my precious child
-    """
-    assert 0 <= amount <= total
-
-    percent_length = 3 + 1 + percent_decimals
-    total_string = f"{total:.{decimals}f}"
-    total_string_length = len(total_string)
-
-    # auto set width
-    if width is None and sys.stdout.isatty():
-        width = os.get_terminal_size().columns
-
-    if width:
-        # put skull emoji here for the regex
-        # default patter from docs https://docs.python.org/3/library/string.html
-        junk_length = len(re.sub(r"(?<!\$)\$([_a-z][_a-z0-9]*)|(?<!\$)\$\{([_a-z][_a-z0-9]*)\}", "", template)) + len(prefix) + len(suffix) + percent_length + total_string_length * 2
-        # clamp
-        bar_length = max(width - junk_length, 0)
-
-    if total:
-        percent_value = 100 * (amount / total)
-        percent = f"{percent_value:.{percent_decimals}f}".rjust(percent_length)
-        filled_length = min(bar_length, int(bar_length * amount // total))
-    else:
-        percent = "-".rjust(percent_length)
-        filled_length = 0
-
-    bar = fill * filled_length + empty * (bar_length - filled_length)
-
-    line = string.Template(template).safe_substitute(prefix=prefix,
-                                                     bar=bar,
-                                                     percent=percent,
-                                                     amount=f"{amount:.{decimals}f}".rjust(total_string_length),
-                                                     total=total_string,
-                                                     suffix=suffix)
-    print(f"\r{line}", end="")
-
-    # print new line on complete
-    if amount == total and finish is None:
-        print()
-
-    if finish:
-        print()
 
 # state of progress
 _last_progress_total: int | None = None

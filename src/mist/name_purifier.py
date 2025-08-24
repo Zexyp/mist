@@ -18,9 +18,14 @@ def purify(videoId):
     microformat = response_data["microformat"]
 
     owner = microformat["microformatDataRenderer"]["pageOwnerDetails"]["name"]
-    owner = owner.removesuffix(" - Topic")
 
-    name = f"""{details["author"]} - {details["title"]}"""
+    # TODO: seems redundant
+    owner = owner.removesuffix(" - Topic") # fuck topics
+
+    if details["author"] not in details["title"]:
+        name = f"""{details["author"]} - {details["title"]}"""
+    else:
+        name = details["title"]
 
     if details["author"] != owner:
         name += f" [{owner}]"
