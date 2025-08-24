@@ -1,5 +1,6 @@
 import argparse
 import sys
+import traceback
 
 from . import *
 from . import shenanigans
@@ -58,6 +59,7 @@ def build_parser():
 
     from importlib.metadata import version
     parser.add_argument('--version', action='version', version=f"Mist {version(__package__)}")
+    parser.add_argument("--debug", action="store_true")
     parser.add_argument("-C")
 
     subparsers = parser.add_subparsers()

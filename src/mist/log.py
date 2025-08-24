@@ -25,12 +25,16 @@ except ImportError:
     pass
 
 _verbose = False
+_debug = False
 
 def log_print(msg):
     print(msg)
 
 def log_verbose(msg):
     if _verbose: print(msg)
+
+def log_debug(msg):
+    if _debug: print(msg)
 
 def log_warning(msg):
     print(COL_YELLOW + msg + COL_RESET, file=sys.stderr)
@@ -50,4 +54,7 @@ def notify_failed():
 
 def notify_death():
     play_random("death")
+
+def notify_target():
+    play_random("target")
 

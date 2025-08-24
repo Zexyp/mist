@@ -5,6 +5,7 @@ from tabnanny import check
 
 from . import shenanigans
 from .errors import RemoteNotFoundError
+from .log import notify_target
 from .utils import url_strip_utm, url_strip_share_identifier, sanitize_filename, print_progress_bar, format_bytes
 
 PROJECT_DIRECTORY = ".mist"
@@ -166,13 +167,6 @@ def remote_remove(name):
 
     save_config()
 
-def remote_rename(old, new):
-    assert old and new
-
-    load_config()
-
-    raise NotImplementedError
-
 ### fetch
 
 def fetch(remote=None, all=False, set_upstream=False):
@@ -232,6 +226,8 @@ def merge(remote):
             i += 1
     except KeyboardInterrupt:
         print("stopped")
+    else:
+        notify_target()
 
 ### pull
 
