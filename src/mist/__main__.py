@@ -5,6 +5,7 @@ import configparser
 
 from yt_dlp import YoutubeDL
 
+from mist.errors import MistError
 from . import name_purifier
 
 MAX_DURATION = 600
@@ -126,10 +127,28 @@ def old_main():
                 name = shrimplify_name(entry)
                 error_log.write(f"{entry['id']}: {name}\n")
 
+import sys
+
+from . import cli
+from .log import log_error, log_warning, log_print
+from .errors import MistError
 
 def main():
-    from . import cli
-    cli.run()
+    try:
+        cli.run()
+    except MistError as me:
+        log_error(str(me))
+        sys.exit(1)
+    except Exception:
+        # craptastic dev thingy
+        try:
+            import os
+            import playsound
+            playsound.playsound(os.path.join(os.path.dirname(__file__), "res/Turret_turret_disabled_2.wav"), False)
+        except ImportError:
+            log_print("no sound for u :(")
+        log_error("whoopsie")
+        raise
     
 if __name__ == "__main__":
     main()

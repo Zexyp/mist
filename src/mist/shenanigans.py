@@ -2,8 +2,7 @@ import os
 
 from yt_dlp import YoutubeDL
 
-from .log import *
-
+from .log import log_verbose
 
 def get_remote_ids(url, start: int = None, end: int = None):
     list_options = {
@@ -23,6 +22,11 @@ def get_remote_ids(url, start: int = None, end: int = None):
     return [e["id"] for e in data["entries"]]
 
 def get_local_ids(directory):
-    print("reading local ids...")
+    log_verbose("reading local ids...")
+    ids = []
+    for f in os.listdir(directory):
+        if os.path.isfile(os.path.join(directory, f)):
+            if len(parts := f.split('.')) > 2:
+                ids.append(parts[-2])
 
-    return [f.split('.')[-2] for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
+    return ids
