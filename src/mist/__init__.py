@@ -4,8 +4,8 @@ from importlib.metadata import version
 from tabnanny import check
 
 from . import shenanigans
-from .errors import RemoteNotFoundError
-from .log import notify_target
+from .errors import RemoteNotFoundError, MistError, NotInitializedError
+from .log import notify_target, log_error
 from .utils import url_strip_utm, url_strip_share_identifier, sanitize_filename, print_progress_bar, format_bytes
 
 PROJECT_DIRECTORY = ".mist"
@@ -67,7 +67,8 @@ def populate_config() -> configparser.ConfigParser:
 def load_config():
     global config
     config = configparser.ConfigParser()
-    assert os.path.exists(PROJECT_FILEPATH_CONFIG), "no config"
+    if not os.path.exists(PROJECT_FILEPATH_CONFIG):
+        raise NotInitializedError("not a mist repository")
     config.read(PROJECT_FILEPATH_CONFIG)
     assert config["core"]["version"] == version(__package__), "version mismatch"
 
@@ -203,7 +204,7 @@ def merge(remote):
     i = 0
     try:
         for e in entries:
-            bar_template = f"({i}/{entries_length}) '{e}' $prefix |$bar| $percent %"
+            bar_template = f"({i}/{entries_length}) {e} $prefix |$bar| $percent %"
             print_progress_bar(0, 100, prefix="Preparing...", template=bar_template)
             def progress_hook(d):
                 match d["status"]:
@@ -220,8 +221,12 @@ def merge(remote):
                     case _:
                         assert False, "unknown status"
 
-            shenanigans.process_entry(e, output_directory=directory,
-                                      progress_hook=progress_hook)
+            try:
+                shenanigans.process_entry(e, output_directory=directory,
+                                          progress_hook=progress_hook)
+            except Exception as e:
+                print_progress_bar(0, 100, prefix=f"Failed", template=bar_template, finish=True, empty='x')
+                log_error(repr(e))
 
             i += 1
     except KeyboardInterrupt:

@@ -27,11 +27,11 @@ def url_strip_share_identifier(url: str) -> AnyStr:
     parsed_url = urlparse(url)
     query = parse_qs(parsed_url.query)
 
-    if not share_identifier_param:
+    if share_identifier_param not in query:
         return url
     log_warning("removing share identifier param, better luck next time")
 
-    query.pop(share_identifier_param, None)
+    query.pop(share_identifier_param)
 
     new_query = urlencode(query, doseq=True)
     pure_url = urlunparse(parsed_url._replace(query=new_query))
