@@ -6,16 +6,16 @@ from .log import notify_target, log_error
 from .utils import url_strip_utm, url_strip_share_identifier, sanitize_filename, print_progress_bar, format_bytes
 from .core import *
 
-def debug_print_call(func):
+def command_print_call(func):
     """debug thingy"""
     def wrapper(*args, **kwargs):
-        log_debug(func.__name__)
+        log_debug(f"command: {func.__name__}")
         return func(*args, **kwargs)
     return wrapper
 
 ### init
 
-@debug_print_call
+@command_print_call
 def init():
     if is_project():
         raise InitializationError("already initialized")
@@ -26,7 +26,7 @@ def init():
 
 ### clone
 
-@debug_print_call
+@command_print_call
 def clone(url, output=None, origin=None):
     dirname = output
     if output is None:
@@ -54,7 +54,7 @@ from .commands.remote import *
 
 ### fetch
 
-@debug_print_call
+@command_print_call
 def fetch(remote=None, all=False, set_upstream=False):
     load_project_config()
 
@@ -76,7 +76,7 @@ def fetch(remote=None, all=False, set_upstream=False):
 
 ### merge
 
-@debug_print_call
+@command_print_call
 def merge(remote):
     load_project_config()
 
@@ -125,7 +125,7 @@ def merge(remote):
 
 ### pull
 
-@debug_print_call
+@command_print_call
 def pull(remote=None, set_upstream=False):
     load_project_config()
 
@@ -140,7 +140,7 @@ def pull(remote=None, set_upstream=False):
 
 ### status
 
-@debug_print_call
+@command_print_call
 def status():
     load_project_config()
 
@@ -174,7 +174,7 @@ def status():
 
 ### checkout
 
-@debug_print_call
+@command_print_call
 def checkout(remote):
     load_project_config()
 
@@ -183,7 +183,7 @@ def checkout(remote):
 
 ### list
 
-@debug_print_call
+@command_print_call
 def list_entries(remote=None, verbose=NotImplementedError()):
     if remote is None:
         print("\n".join(shenanigans.get_local_ids(".")))

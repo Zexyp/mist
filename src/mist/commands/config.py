@@ -1,5 +1,5 @@
 from ..core import *
-from .. import debug_print_call
+from .. import command_print_call
 
 DEFAULT_KIND = "local"
 
@@ -51,12 +51,14 @@ def _config_get_active(kind):
         case "local":
             load_project_config()
             active_conf = project_config
+        case "global":
+            active_conf = global_config
 
         # debug thingy
         case "forced":
             active_conf = forced_config
 
-        # fallback
+        # fallback, default all
         case None:
             active_conf = configuration
 
@@ -68,22 +70,31 @@ def _config_get_active(kind):
 
 def _config_write(kind, section, option, value):
     match kind or DEFAULT_KIND:
-        case "local" | None:
+        case "local":
             load_project_config()
             config_safe_set(project_config, section, option, value)
             save_project_config()
+        case "global":
+            config_safe_set(global_config, section, option, value)
+            save_global_config()
         case _:
             assert False, "unknown config kind"
 
 def _config_remove(kind, section, option):
+    def remove(conf):
+        conf.remove_option(section, option)
+        # cleanup
+        if len(conf[section]) == 0:
+            conf.remove_section(section)
+
     match kind or DEFAULT_KIND:
         case "local":
             load_project_config()
-            project_config.remove_option(section, option)
-            # cleanup
-            if len(project_config[section]) == 0:
-                project_config.remove_section(section)
+            remove(project_config)
             save_project_config()
+        case "global":
+            remove(global_config)
+            save_global_config()
         case _:
             assert False, "unknown config kind"
 
@@ -92,16 +103,21 @@ def _config_edit_path(kind):
     match kind or DEFAULT_KIND:
         case "local":
             file = PROJECT_FILEPATH_CONFIG
+        case "global":
+            file = FILEPATH_GLOBAL_CONFIG
         case _:
             assert False, "unknown config kind"
 
     return file
 
-@debug_print_call
+@command_print_call
 def config(key, value=None, list=None, edit=None, kind=None, unset=False):
-    assert sum([bool(key), list, edit]) == 1, "invalid args"
+    if not sum([bool(key), list, edit]) == 1:
+        raise ArgumentError("invalid args")
 
-    if not key: assert not unset, "now what"
+    if not key:
+        if unset:
+            raise ArgumentError("now what")
 
     if is_project():
         load_project_config()

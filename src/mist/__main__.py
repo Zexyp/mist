@@ -1,7 +1,7 @@
 import sys
 import traceback
 
-from . import cli
+from . import cli, log_verbose
 from .log import log_error, log_warning, log_print, notify_failed, notify_death, log_debug, log_fatal
 from .errors import MistError
 
@@ -9,6 +9,7 @@ def main():
     try:
         cli.run()
     except MistError as e:
+        log_verbose(type(e).__name__)
         log_error(str(e))
         log_debug(traceback.format_exc())
         sys.exit(1)

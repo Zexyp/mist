@@ -4,6 +4,9 @@ class MistError(Exception):
 class RemoteError(MistError):
     pass
 
+class ArgumentError(MistError):
+    pass
+
 class InitializationError(MistError):
     pass
 

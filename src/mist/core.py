@@ -2,6 +2,7 @@ import os
 import configparser
 import sys
 from importlib.metadata import version
+from pathlib import Path
 
 from .errors import *
 from . import log
@@ -21,11 +22,14 @@ FILENAME_IGNORE = ".mistignore"
 FILENAME_CONFIG = ".mistconfig"
 FILENAME_MODULES = ".mistmodules"
 
+FILEPATH_GLOBAL_CONFIG = os.path.join(Path.home(), FILENAME_CONFIG)
+
 DEFAULT_ORIGIN_NAME = "origin"
 
 _remote_section_template = "remote \"{name}\""
 
 project_config: configparser.ConfigParser = configparser.ConfigParser()
+global_config: configparser.ConfigParser = configparser.ConfigParser()
 configuration: configparser.ConfigParser = configparser.ConfigParser()
 forced_config: configparser.ConfigParser = configparser.ConfigParser()
 
@@ -75,31 +79,45 @@ def get_remote_entries(remote):
 
 def project_config_template(conf: configparser.ConfigParser):
     conf["core"] = {
-        "version": version(__package__),
     }
-
-def load_project_config():
-    if not is_project():
-        raise InitializationError("not a mist repository")
-    project_config.read(PROJECT_FILEPATH_CONFIG)
-    if not project_config.get("core", "version") == version(__package__):
-        raise ConfigurationError("version mismatch")
-
-    apply_configuration()
 
 def is_project() -> bool:
     return os.path.exists(PROJECT_FILEPATH_CONFIG)
 
+def load_project_config():
+    if not is_project():
+        raise InitializationError("not a mist repository")
+
+    log_verbose("reading local config")
+    project_config.read(PROJECT_FILEPATH_CONFIG)
+
+    apply_configuration()
+
+def load_global_config():
+    log_verbose("reading global config")
+    global_config.read(FILEPATH_GLOBAL_CONFIG)
+
+    apply_configuration()
+
 def save_project_config():
     proj_dir = os.path.dirname(PROJECT_FILEPATH_CONFIG)
     os.makedirs(proj_dir, exist_ok=True)
-    log_verbose(f"creating project dir '{os.path.abspath(proj_dir)}'")
+    log_debug(f"project dir '{os.path.abspath(proj_dir)}'")
+    log_verbose("writing local config")
     with open(PROJECT_FILEPATH_CONFIG, "w") as configfile:
         project_config.write(configfile)
 
+def save_global_config():
+    log_debug(f"global config at '{FILEPATH_GLOBAL_CONFIG}'")
+    log_verbose("writing global config")
+    with open(FILEPATH_GLOBAL_CONFIG, "w") as configfile:
+        global_config.write(configfile)
+
 def initialize():
-    # TODO: read global config
-    pass
+    if os.path.exists(FILEPATH_GLOBAL_CONFIG):
+        load_global_config()
+    else:
+        log_verbose(f"no global config to load")
 
 def config_safe_set(conf: configparser.ConfigParser, section: str, option: str, value):
     if not conf.has_section(section):
@@ -122,8 +140,9 @@ def config_overlay(overlay: configparser.ConfigParser, on: configparser.ConfigPa
             config_safe_set(on, section, key, value)
 
 def apply_configuration():
+    config_overlay(global_config, configuration)
+    config_overlay(project_config, configuration)
     config_overlay(forced_config, configuration)
-    if project_config: config_overlay(project_config, configuration)
 
     try:
         if value := configuration.getboolean("core", "debug", fallback=None) is not None: log._debug = value
@@ -131,7 +150,7 @@ def apply_configuration():
         if value := configuration.getboolean("core", "verbose", fallback=None) is not None: log._verbose = value
         match value := configuration.get("core", "color", fallback=None):
             case "auto":
-                if not (os.isatty(sys.stdin.fileno()) or ("NO_COLOR" in os.environ and os.environ["NO_COLOR"] != "\0")):
+                if not (not sys.stdout.isatty() or ("NO_COLOR" in os.environ and os.environ["NO_COLOR"] != "\0")):
                     log.init_colors()
                 else:
                     log.deinit_colors()

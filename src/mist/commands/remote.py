@@ -1,8 +1,8 @@
 from ..core import *
 from ..utils import *
-from .. import debug_print_call
+from .. import command_print_call
 
-@debug_print_call
+@command_print_call
 def remote_list(verbose=False):
     load_project_config()
 
@@ -15,7 +15,7 @@ def remote_list(verbose=False):
 
     save_project_config()
 
-@debug_print_call
+@command_print_call
 def remote_add(name, url):
     assert name and url
 
@@ -29,7 +29,7 @@ def remote_add(name, url):
 
     remote_set_url(name, url)
 
-@debug_print_call
+@command_print_call
 def remote_set_url(name, newurl):
     assert name and newurl
 

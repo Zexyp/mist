@@ -16,21 +16,32 @@ _sound = True
 def deinit_colors():
     global COL_RESET, COL_YELLOW, COL_DIM, COL_RED
 
-    COL_RESET = ""
-    COL_RED = ""
+    COL_RESET  = ""
+    COL_RED    = ""
     COL_YELLOW = ""
-    COL_DIM = ""
+    COL_DIM    = ""
+
+    if not colorama:
+        return
+
+    colorama.deinit()
+
+    log_verbose("colors deinitialized")
 
 def init_colors():
     if not colorama:
         return
 
-    global COL_RESET, COL_YELLOW, COL_DIM, COL_RED
     colorama.init()
+
+    global COL_RESET, COL_YELLOW, COL_DIM, COL_RED
+
     COL_RESET = colorama.Style.RESET_ALL
     COL_RED = colorama.Fore.RED
     COL_YELLOW = colorama.Fore.YELLOW
     COL_DIM = colorama.Style.DIM
+
+    log_verbose("colors initialized")
 
 def log_print(msg):
     print(msg)
@@ -72,7 +83,6 @@ try:
 except ImportError:
     colorama = None
     log_warning("color module import error (colorama)")
-    pass
 
 # craptastic feature (dev) thingy
 try:
@@ -81,4 +91,3 @@ try:
 except ImportError:
     playsound = None
     log_warning("sound module import error (playsound)")
-    pass

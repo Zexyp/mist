@@ -67,7 +67,7 @@ def build_parser_config(subparsers):
     group = parser.add_mutually_exclusive_group(required=False)
     group.add_argument("--local", dest="kind", action="store_const", const="local")
     group.add_argument("--forced", dest="kind", action="store_const", const="forced")
-    #group.add_argument("--global", dest="kind", action="store_const", const="global")
+    group.add_argument("--global", dest="kind", action="store_const", const="global")
     #group.add_argument("--system", dest="kind", action="store_const", const="system")
     parser.add_argument("key", nargs='?')
     parser.add_argument("value", nargs='?')
@@ -130,14 +130,14 @@ def run():
         prev_dir = os.getcwd()
         os.chdir(args.C)
 
-    core.initialize()
-
     core.configure(debug=args.debug,
                    verbose=args.verbose,
                    color=args.color,
                    sound=_parse_on_off(args.sound))
 
     core.apply_configuration()
+
+    core.initialize()
 
     if hasattr(args, 'func'):
         args.func(args)
@@ -146,44 +146,3 @@ def run():
 
     if prev_dir:
         os.chdir(prev_dir)
-
-
-# state of progress
-_last_progress_total: int | None = None
-_last_print = None
-
-# cfg
-_progress_update = 1000 # in ms, None - disabled
-
-def progress_start(total):
-    """used to initialize progress bar"""
-    if _progress_update is None:
-        return
-    global _last_progress_total
-    assert _last_progress_total is None
-
-    _last_progress_total = total
-    print_progress_bar(0, _last_progress_total, prefix=f"Preparing...:", finish=False)
-
-
-def progress_update(iteration):
-    """update state"""
-    if _progress_update is None:
-        return
-    global _last_progress_total
-    assert _last_progress_total is not None
-    if iteration > _last_progress_total:
-        _last_progress_total = iteration
-    if iteration % _progress_update != 0:
-        return
-    print_progress_bar(iteration, _last_progress_total, prefix=f"Working... ({str(iteration).rjust(len(str(_last_progress_total)))}/{_last_progress_total}):", finish=False)
-
-
-def progress_finish():
-    """fill progress bar and reset context"""
-    if _progress_update is None:
-        return
-    global _last_progress_total
-    assert _last_progress_total is not None
-    print_progress_bar(_last_progress_total, _last_progress_total, prefix=f"Done ({_last_progress_total}/{_last_progress_total}):", finish=True)
-    _last_progress_total = None
