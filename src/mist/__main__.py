@@ -10,6 +10,7 @@ def main():
         cli.run()
     except MistError as e:
         log_error(str(e))
+        log_debug(traceback.format_exc())
         sys.exit(1)
     except AssertionError as e:
         log_fatal(f"{type(e).__name__}: {str(e)}")

@@ -9,26 +9,17 @@ COL_DIM    = ""
 
 SOUND_BASE_PATH = os.path.join(os.path.dirname(__file__), "res", "sounds")
 
-# craptastic feature (dev) thingy
-try:
-    logging.getLogger("playsound").setLevel(logging.ERROR)  # way to make this nigga shut up
-    from playsound import playsound
-except ImportError:
-    playsound = None
-    print("sound module import error (playsound)", file=sys.stderr)
-    pass
-
-try:
-    import colorama
-except ImportError:
-    colorama = None
-    print("color module import error (colorama)", file=sys.stderr)
-    pass
-
 _verbose = False
 _debug = False
 _sound = True
 
+def deinit_colors():
+    global COL_RESET, COL_YELLOW, COL_DIM, COL_RED
+
+    COL_RESET = ""
+    COL_RED = ""
+    COL_YELLOW = ""
+    COL_DIM = ""
 
 def init_colors():
     if not colorama:
@@ -51,7 +42,7 @@ def log_debug(msg):
     if _debug: print(COL_DIM + msg + COL_RESET)
 
 def log_warning(msg):
-    print(COL_YELLOW + msg + COL_RESET, file=sys.stderr)
+    print(COL_YELLOW + f"warning: {msg}" + COL_RESET, file=sys.stderr)
 
 def log_error(msg):
     print(COL_RED + f"error: {msg}" + COL_RESET, file=sys.stderr)
@@ -75,3 +66,19 @@ def notify_death():
 def notify_target():
     play_random("target")
 
+try:
+    import colorama
+    init_colors()
+except ImportError:
+    colorama = None
+    log_warning("color module import error (colorama)")
+    pass
+
+# craptastic feature (dev) thingy
+try:
+    logging.getLogger("playsound").setLevel(logging.ERROR)  # way to make this nigga shut up
+    from playsound import playsound
+except ImportError:
+    playsound = None
+    log_warning("sound module import error (playsound)")
+    pass

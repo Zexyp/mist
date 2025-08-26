@@ -130,7 +130,7 @@ def run():
         prev_dir = os.getcwd()
         os.chdir(args.C)
 
-    core.init()
+    core.initialize()
 
     core.configure(debug=args.debug,
                    verbose=args.verbose,

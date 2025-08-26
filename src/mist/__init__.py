@@ -6,8 +6,16 @@ from .log import notify_target, log_error
 from .utils import url_strip_utm, url_strip_share_identifier, sanitize_filename, print_progress_bar, format_bytes
 from .core import *
 
+def debug_print_call(func):
+    """debug thingy"""
+    def wrapper(*args, **kwargs):
+        log_debug(func.__name__)
+        return func(*args, **kwargs)
+    return wrapper
+
 ### init
 
+@debug_print_call
 def init():
     if is_project():
         raise InitializationError("already initialized")
@@ -18,12 +26,13 @@ def init():
 
 ### clone
 
+@debug_print_call
 def clone(url, output=None, origin=None):
     dirname = output
     if output is None:
         dirname = sanitize_filename(shenanigans.get_remote_title(url))
 
-    assert not os.path.exists(dirname)
+    assert not os.path.exists(dirname), "path exists"
 
     os.makedirs(dirname)
     prev_dir = os.getcwd()
@@ -45,6 +54,7 @@ from .commands.remote import *
 
 ### fetch
 
+@debug_print_call
 def fetch(remote=None, all=False, set_upstream=False):
     load_project_config()
 
@@ -66,6 +76,7 @@ def fetch(remote=None, all=False, set_upstream=False):
 
 ### merge
 
+@debug_print_call
 def merge(remote):
     load_project_config()
 
@@ -114,6 +125,7 @@ def merge(remote):
 
 ### pull
 
+@debug_print_call
 def pull(remote=None, set_upstream=False):
     load_project_config()
 
@@ -128,32 +140,41 @@ def pull(remote=None, set_upstream=False):
 
 ### status
 
+@debug_print_call
 def status():
     load_project_config()
 
-    remote_ids = get_remote_entries(get_current_remote())
+    current_remote = get_current_remote()
+    remote_ids = get_remote_entries(current_remote)
     local_ids = shenanigans.get_local_ids(".")
 
     remote_ids_set = set(remote_ids)
     local_ids_set = set(local_ids)
     missing = remote_ids_set - local_ids_set
     leftovers = local_ids_set - remote_ids_set
+    print(f"remote: {current_remote}")
+    print()
     print("missing:")
     print("\n".join([f"    {i}" for i in missing]))
+    print()
     print("leftovers:")
     print("\n".join([f"    {i}" for i in leftovers]))
+    print()
 
     duplicates_local = utils.find_duplicates(remote_ids)
     if duplicates_local:
         print("local duplicates:")
         print("\n".join([f"    {i}" for i in duplicates_local]))
+        print()
     duplicates_remote = utils.find_duplicates(remote_ids)
     if duplicates_remote:
         print("remote duplicates:")
         print("\n".join([f"    {i}" for i in duplicates_remote]))
+        print()
 
 ### checkout
 
+@debug_print_call
 def checkout(remote):
     load_project_config()
 
@@ -162,7 +183,8 @@ def checkout(remote):
 
 ### list
 
-def list_entries(remote=None, verbose="xd"):
+@debug_print_call
+def list_entries(remote=None, verbose=NotImplementedError()):
     if remote is None:
         print("\n".join(shenanigans.get_local_ids(".")))
         return

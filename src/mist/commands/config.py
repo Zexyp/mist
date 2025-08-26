@@ -1,4 +1,5 @@
 from ..core import *
+from .. import debug_print_call
 
 DEFAULT_KIND = "local"
 
@@ -96,7 +97,7 @@ def _config_edit_path(kind):
 
     return file
 
-
+@debug_print_call
 def config(key, value=None, list=None, edit=None, kind=None, unset=False):
     assert sum([bool(key), list, edit]) == 1, "invalid args"
 

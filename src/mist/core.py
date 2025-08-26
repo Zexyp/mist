@@ -5,6 +5,7 @@ from importlib.metadata import version
 
 from .errors import *
 from . import log
+from .log import log_debug, log_verbose
 
 PROJECT_DIRECTORY = ".mist"
 PROJECT_FILEPATH_CONFIG = PROJECT_DIRECTORY + "/config"
@@ -75,7 +76,6 @@ def get_remote_entries(remote):
 def project_config_template(conf: configparser.ConfigParser):
     conf["core"] = {
         "version": version(__package__),
-        "editor": "nano"
     }
 
 def load_project_config():
@@ -91,11 +91,13 @@ def is_project() -> bool:
     return os.path.exists(PROJECT_FILEPATH_CONFIG)
 
 def save_project_config():
-    os.makedirs(os.path.dirname(PROJECT_FILEPATH_CONFIG), exist_ok=True)
+    proj_dir = os.path.dirname(PROJECT_FILEPATH_CONFIG)
+    os.makedirs(proj_dir, exist_ok=True)
+    log_verbose(f"creating project dir '{os.path.abspath(proj_dir)}'")
     with open(PROJECT_FILEPATH_CONFIG, "w") as configfile:
         project_config.write(configfile)
 
-def init():
+def initialize():
     # TODO: read global config
     pass
 
@@ -131,10 +133,12 @@ def apply_configuration():
             case "auto":
                 if not (os.isatty(sys.stdin.fileno()) or ("NO_COLOR" in os.environ and os.environ["NO_COLOR"] != "\0")):
                     log.init_colors()
+                else:
+                    log.deinit_colors()
             case "force":
                 log.init_colors()
             case "off":
-                pass
+                log.deinit_colors()
             case None:
                 pass
             case _:
