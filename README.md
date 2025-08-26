@@ -28,8 +28,18 @@ FFmpeg is strongly recommended.
 apt install ffmpeg
 ```
 
+#### Termux
+I want Termix to run on my phone tho.
+```sh
+pkg install ffmpeg
+```
+
 #### Windows
 You will have to go down the rabbit hole...
 
+### Optional modules
+- `colorama` (https://pypi.org/project/colorama/)
+- `playsound` (https://pypi.org/project/playsound/)
+
 > [!CAUTION]
-> Undefined operations lead to undefined behavior.
+> Undefined operation leads to undefined behavior.

@@ -1,8 +1,20 @@
 class MistError(Exception):
     pass
 
-class NotInitializedError(MistError):
+class RemoteError(MistError):
     pass
 
-class RemoteNotFoundError(MistError):
+class InitializationError(MistError):
+    pass
+
+class NoDataFileError(FileNotFoundError, MistError):
+    pass
+
+class ConfigurationError(MistError):
+    pass
+
+class RemoteNotFoundError(RemoteError):
+    pass
+
+class RemoteExistsError(RemoteError):
     pass

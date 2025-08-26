@@ -4,10 +4,18 @@ import traceback
 
 from . import *
 from . import shenanigans
+from . import log
+from . import core
+
+def _parse_on_off(value: str | None) -> bool | None:
+    match value:
+        case 'on': return True
+        case 'off': return False
+        case _: return None
 
 def build_parser_remote(subparsers):
     parser = subparsers.add_parser("remote")
-    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("-v", "--verbose", action="store_true", default=None)
     parser.set_defaults(func=lambda args: remote_list(args.verbose))
 
     subparsers_remote = parser.add_subparsers()
@@ -54,12 +62,36 @@ def build_parser_clone(subparsers):
 
     return parser
 
+def build_parser_config(subparsers):
+    parser = subparsers.add_parser("config")  # locations: global, system, local, worktree?
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument("--local", dest="kind", action="store_const", const="local")
+    group.add_argument("--forced", dest="kind", action="store_const", const="forced")
+    #group.add_argument("--global", dest="kind", action="store_const", const="global")
+    #group.add_argument("--system", dest="kind", action="store_const", const="system")
+    parser.add_argument("key", nargs='?')
+    parser.add_argument("value", nargs='?')
+    parser.add_argument("--list", "-l", action="store_true")
+    parser.add_argument("--edit", action="store_true")
+    parser.add_argument("--unset", action="store_true")
+    parser.set_defaults(func=lambda args: config(key=args.key, value=args.value, kind=args.kind,
+                                                 # operations
+                                                 list=args.list,
+                                                 edit=args.edit,
+                                                 unset=args.unset))
+
+    return parser
+
 def build_parser():
+    # TODO: subparser verbosity?
     parser = argparse.ArgumentParser()
 
     from importlib.metadata import version
     parser.add_argument('--version', action='version', version=f"Mist {version(__package__)}")
-    parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--debug", action="store_true", default=None)
+    parser.add_argument("--verbose", action="store_true", default=None)
+    parser.add_argument("--color", choices=["auto", "off", "force"])
+    parser.add_argument("--sound", choices=["on", "off"])
     parser.add_argument("-C")
 
     subparsers = parser.add_subparsers()
@@ -80,15 +112,11 @@ def build_parser():
     parser_pull = build_parser_pull(subparsers)
     #parser_diff = subparsers.add_parser("diff")
     #parser_submodule = subparsers.add_parser("submodule")
-    #parser_config = subparsers.add_parser("config") # locations: global, system, local, worktree?
+    parser_config = build_parser_config(subparsers)
 
     parser_list = subparsers.add_parser("list", aliases=["ls"])
-    parser_list.set_defaults(func=lambda args: print("\n".join(shenanigans.get_remote_ids("asd"))))
-    parser_entry = subparsers.add_parser("entry")
-    parser_entry.add_argument("index")
-    def entry(index):
-        print(shenanigans.get_remote_ids("asd", start=index + 1, end=index + 1))
-    parser_entry.set_defaults(func=lambda args: entry(int(args.index)))
+    parser_list.add_argument("remote", nargs='?')
+    parser_list.set_defaults(func=lambda args: list_entries(args.remote))
 
     return parser
 
@@ -102,6 +130,15 @@ def run():
         prev_dir = os.getcwd()
         os.chdir(args.C)
 
+    core.init()
+
+    core.configure(debug=args.debug,
+                   verbose=args.verbose,
+                   color=args.color,
+                   sound=_parse_on_off(args.sound))
+
+    core.apply_configuration()
+
     if hasattr(args, 'func'):
         args.func(args)
     else:
@@ -110,12 +147,10 @@ def run():
     if prev_dir:
         os.chdir(prev_dir)
 
-import string
-import re
 
 # state of progress
 _last_progress_total: int | None = None
-_last_print: int = None
+_last_print = None
 
 # cfg
 _progress_update = 1000 # in ms, None - disabled

@@ -1,49 +1,66 @@
 import sys
 import os
+import logging
 
 COL_RESET  = ""
 COL_RED    = ""
 COL_YELLOW = ""
+COL_DIM    = ""
 
 SOUND_BASE_PATH = os.path.join(os.path.dirname(__file__), "res", "sounds")
 
 # craptastic feature (dev) thingy
 try:
+    logging.getLogger("playsound").setLevel(logging.ERROR)  # way to make this nigga shut up
     from playsound import playsound
 except ImportError:
+    playsound = None
     print("sound module import error (playsound)", file=sys.stderr)
     pass
 
 try:
     import colorama
-    colorama.init()
-    COL_RESET  = colorama.Fore.RESET
-    COL_RED    = colorama.Fore.RED
-    COL_YELLOW = colorama.Fore.YELLOW
 except ImportError:
+    colorama = None
     print("color module import error (colorama)", file=sys.stderr)
     pass
 
 _verbose = False
 _debug = False
+_sound = True
+
+
+def init_colors():
+    if not colorama:
+        return
+
+    global COL_RESET, COL_YELLOW, COL_DIM, COL_RED
+    colorama.init()
+    COL_RESET = colorama.Style.RESET_ALL
+    COL_RED = colorama.Fore.RED
+    COL_YELLOW = colorama.Fore.YELLOW
+    COL_DIM = colorama.Style.DIM
 
 def log_print(msg):
     print(msg)
 
 def log_verbose(msg):
-    if _verbose: print(msg)
+    if _verbose: print(COL_DIM + msg + COL_RESET)
 
 def log_debug(msg):
-    if _debug: print(msg)
+    if _debug: print(COL_DIM + msg + COL_RESET)
 
 def log_warning(msg):
     print(COL_YELLOW + msg + COL_RESET, file=sys.stderr)
 
 def log_error(msg):
-    print(COL_RED + msg + COL_RESET, file=sys.stderr)
+    print(COL_RED + f"error: {msg}" + COL_RESET, file=sys.stderr)
+
+def log_fatal(msg):
+    print(COL_RED + f"fatal: {msg}" + COL_RESET, file=sys.stderr)
 
 def play_random(category):
-    if playsound:
+    if _sound and playsound:
         directory = os.path.join(SOUND_BASE_PATH, category)
         files = [f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
         import random

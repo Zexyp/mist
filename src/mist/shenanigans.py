@@ -76,6 +76,8 @@ def get_local_ids(directory):
 
     return ids
 
+def get_entry_title(idntifier):
+    raise NotImplementedError
 
 def process_entry(idntifier, output_directory,
                   progress_hook: Callable = None):
