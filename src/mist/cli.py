@@ -1,6 +1,7 @@
 import argparse
 import sys
 import traceback
+from tabnanny import verbose
 
 from . import *
 from . import shenanigans
@@ -87,7 +88,7 @@ def build_parser():
     parser = argparse.ArgumentParser()
 
     from importlib.metadata import version
-    parser.add_argument('--version', action='version', version=f"Mist {version(__package__)}")
+    parser.add_argument("--version", action="version", version=f"Mist {version(__package__)}")
     parser.add_argument("--debug", action="store_true", default=None)
     parser.add_argument("--verbose", action="store_true", default=None)
     parser.add_argument("--color", choices=["auto", "off", "force"])
@@ -116,7 +117,8 @@ def build_parser():
 
     parser_list = subparsers.add_parser("list", aliases=["ls"])
     parser_list.add_argument("remote", nargs='?')
-    parser_list.set_defaults(func=lambda args: list_entries(args.remote))
+    parser_list.add_argument("--verbose", action="store_true")
+    parser_list.set_defaults(func=lambda args: list_entries(args.remote, verbose=args.verbose))
 
     return parser
 

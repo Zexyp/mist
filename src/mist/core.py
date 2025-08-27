@@ -1,6 +1,7 @@
 import os
 import configparser
 import sys
+from functools import cache
 from importlib.metadata import version
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from .log import log_debug, log_verbose
 PROJECT_DIRECTORY = ".mist"
 PROJECT_FILEPATH_CONFIG = PROJECT_DIRECTORY + "/config"
 PROJECT_FILEPATH_REMOTE = PROJECT_DIRECTORY + "/remote"
-PROJECT_DIRECTORY_ENTRIES = PROJECT_DIRECTORY + "/entries"
+PROJECT_DIRECTORY_CACHE = PROJECT_DIRECTORY + "/cache"
 # TODO: submodules will allow for directory structure
 # TODO: bracketeer
 # TODO: genres
@@ -25,6 +26,10 @@ FILENAME_MODULES = ".mistmodules"
 FILEPATH_GLOBAL_CONFIG = os.path.join(Path.home(), FILENAME_CONFIG)
 
 DEFAULT_ORIGIN_NAME = "origin"
+
+CACHE_TYPE_TITLES = "titles"
+CACHE_TYPE_ENTRIES = "entries"
+CACHE_TYPE_ERRORS = "errors"
 
 _remote_section_template = "remote \"{name}\""
 
@@ -51,6 +56,10 @@ def add_remote(remote):
         raise RemoteExistsError("already exists")
     project_config[section_name] = {}
 
+def get_cache_path_for_remote(remote, type):
+    path = os.path.join(PROJECT_DIRECTORY_CACHE, remote, type)
+    return path
+
 def set_current_remote(remote):
     assert remote is not None, "no remote specified"
     ensure_remote(remote)
@@ -66,7 +75,7 @@ def get_current_remote():
 
 def get_remote_entries(remote):
     ensure_remote(remote)
-    filepath = os.path.join(PROJECT_DIRECTORY_ENTRIES, remote)
+    filepath = get_cache_path_for_remote(remote, CACHE_TYPE_ENTRIES)
     if not os.path.exists(filepath):
         raise NoDataFileError("no entries data")
 
@@ -78,8 +87,7 @@ def get_remote_entries(remote):
     return remote_entries
 
 def project_config_template(conf: configparser.ConfigParser):
-    conf["core"] = {
-    }
+    conf["core"] = {}
 
 def is_project() -> bool:
     return os.path.exists(PROJECT_FILEPATH_CONFIG)

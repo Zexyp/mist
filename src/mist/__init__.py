@@ -1,4 +1,5 @@
 import os
+import concurrent.futures
 
 from . import shenanigans
 from .errors import *
@@ -68,8 +69,8 @@ def fetch(remote=None, all=False, set_upstream=False):
 
     remote_ids = shenanigans.get_remote_ids(remote_data["url"])
 
-    filepath = os.path.join(PROJECT_DIRECTORY_ENTRIES, remote)
-    os.makedirs(PROJECT_DIRECTORY_ENTRIES, exist_ok=True)
+    filepath = get_cache_path_for_remote(remote, CACHE_TYPE_ENTRIES)
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     with open(filepath, "w") as file:
         for id in remote_ids:
             file.write(f"{id}\n")
@@ -89,6 +90,10 @@ def merge(remote):
     if len(entries) == 0:
         print("up to date")
         return
+
+    title_cache_file = get_cache_path_for_remote(remote, CACHE_TYPE_TITLES)
+    shenanigans.load_title_cache(title_cache_file)
+
     entries_length = len(entries)
     i = 0
     try:
@@ -96,6 +101,10 @@ def merge(remote):
             bar_template = f"({i}/{entries_length}) {e} $prefix |$bar| $percent %"
             print_progress_bar(0, 100, prefix="Preparing...", template=bar_template)
             def progress_hook(d):
+                titlefix = ""
+                if "title" in d:
+                    titlefix += f" '{d['title']}'"
+
                 match d["status"]:
                     case "downloading":
                         downloaded = d["downloaded_bytes"]
@@ -104,9 +113,9 @@ def merge(remote):
                         speed = d["speed"]
                         eta = d["eta"]
                         msg = f"{format_bytes(total)} at {format_bytes(speed)}/s"
-                        print_progress_bar(percent, 100, prefix=f"Downloading ({msg})", template=bar_template, finish=False)
+                        print_progress_bar(percent, 100, prefix=f"Downloading{titlefix} ({msg})", template=bar_template, finish=False)
                     case "finished":
-                        print_progress_bar(100, 100, prefix=f"Finished", template=bar_template, finish=True)
+                        print_progress_bar(100, 100, prefix=f"Finished{titlefix}", template=bar_template, finish=True)
                     case _:
                         assert False, "unknown status"
 
@@ -122,6 +131,8 @@ def merge(remote):
         print("stopped")
     else:
         notify_target()
+    finally:
+        shenanigans.save_title_cache(title_cache_file)
 
 ### pull
 
@@ -184,13 +195,33 @@ def checkout(remote):
 ### list
 
 @command_print_call
-def list_entries(remote=None, verbose=NotImplementedError()):
-    if remote is None:
-        print("\n".join(shenanigans.get_local_ids(".")))
-        return
+def list_entries(remote=None, verbose=False):
+    title_cache_file = None
+    if remote:
+        load_project_config()
+        listidlo = get_remote_entries(remote)
+        title_getter = shenanigans.get_remote_entry_title
 
-    load_project_config()
-    print("\n".join(get_remote_entries(remote)))
+        title_cache_file = get_cache_path_for_remote(remote, CACHE_TYPE_TITLES)
+    else:
+        listidlo = shenanigans.get_local_ids(".")
+        title_getter = lambda x: shenanigans.get_local_entry_title(".", x)
+
+    if verbose:
+        if title_cache_file:
+            shenanigans.load_title_cache(title_cache_file)
+
+        def append_name(listidlo, i):
+            listidlo[i] = f"{listidlo[i]}  {title_getter(listidlo[i])}"
+        with concurrent.futures.ThreadPoolExecutor() as ex:
+            tasks = {ex.submit(append_name, listidlo, i) for i in range(len(listidlo))}
+            for future in concurrent.futures.as_completed(tasks):
+                future.result()
+
+        if title_cache_file:
+            shenanigans.save_title_cache(title_cache_file)
+
+    print("\n".join(listidlo))
 
 ### config
 
