@@ -6,6 +6,7 @@ from .errors import *
 from .log import notify_target, log_error
 from .utils import url_strip_utm, url_strip_share_identifier, sanitize_filename, print_progress_bar, format_bytes
 from .core import *
+from .platform import run_concurrently
 
 def command_print_call(func):
     """debug thingy"""
@@ -84,9 +85,11 @@ def merge(remote):
     directory = "."
     local_ids = set(shenanigans.get_local_ids(directory))
     remote_ids = set(get_remote_entries(remote))
+    error_ids = set(get_remote_errors(remote) or [])
+    if error_ids:
+        log_verbose("errors will be skipped")
 
-
-    entries = remote_ids - local_ids
+    entries = remote_ids - local_ids - error_ids
     if len(entries) == 0:
         print("up to date")
         return
@@ -96,43 +99,53 @@ def merge(remote):
 
     entries_length = len(entries)
     i = 0
+    failed = []
+
+    def progress_hook(d):
+        nonlocal i
+
+        match d["status"]:
+            case "downloading":
+                downloaded = d["downloaded_bytes"]
+                total = d["total_bytes"]
+                percent = downloaded / total * 100
+                speed = d["speed"]
+                eta = d["eta"]
+                msg = f"{format_bytes(total)} at {format_bytes(speed)}/s"
+                print_progress_bar(i + percent / 100, entries_length, prefix=f"Downloading {d['id']} ({d['title']}) [{msg}]", finish=False)
+            case "finished":
+                i += 1
+                print_progress_bar(i, entries_length, prefix=f"Finished {d['id']} ({d['title']})", finish=False)
+            case _:
+                assert False, "unknown status"
+
+    print_progress_bar(0, entries_length, prefix="Preparing...")
     try:
-        for e in entries:
-            bar_template = f"({i}/{entries_length}) {e} $prefix |$bar| $percent %"
-            print_progress_bar(0, 100, prefix="Preparing...", template=bar_template)
-            def progress_hook(d):
-                titlefix = ""
-                if "title" in d:
-                    titlefix += f" '{d['title']}'"
-
-                match d["status"]:
-                    case "downloading":
-                        downloaded = d["downloaded_bytes"]
-                        total = d["total_bytes"]
-                        percent = downloaded / total * 100
-                        speed = d["speed"]
-                        eta = d["eta"]
-                        msg = f"{format_bytes(total)} at {format_bytes(speed)}/s"
-                        print_progress_bar(percent, 100, prefix=f"Downloading{titlefix} ({msg})", template=bar_template, finish=False)
-                    case "finished":
-                        print_progress_bar(100, 100, prefix=f"Finished{titlefix}", template=bar_template, finish=True)
-                    case _:
-                        assert False, "unknown status"
-
+        def handle_entry(entry):
             try:
-                shenanigans.process_entry(e, output_directory=directory,
+                shenanigans.process_entry(entry, output_directory=directory,
                                           progress_hook=progress_hook)
-            except Exception as e:
-                print_progress_bar(0, 100, prefix=f"Failed", template=bar_template, finish=True, empty='x')
+            except shenanigans.ShenanigansError as e:
+                failed.append(entry)
                 log_error(repr(e))
 
-            i += 1
+        run_concurrently(handle_entry, entries)
     except KeyboardInterrupt:
         print("stopped")
     else:
         notify_target()
+        print_progress_bar(entries_length, entries_length, prefix="Done", finish=True)
     finally:
         shenanigans.save_title_cache(title_cache_file)
+
+        if len(failed) > 0:
+            error_cache_file = get_cache_path_for_remote(remote, CACHE_TYPE_ERRORS)
+            os.makedirs(os.path.dirname(error_cache_file), exist_ok=True)
+            with open(error_cache_file, "w") as file:
+                for item in {*failed, *error_ids}:
+                    file.write(f"{item}\n")
+            log_verbose("new errors recorded")
+
 
 ### pull
 
@@ -158,10 +171,11 @@ def status():
     current_remote = get_current_remote()
     remote_ids = get_remote_entries(current_remote)
     local_ids = shenanigans.get_local_ids(".")
+    error_ids_set = set(get_remote_errors(current_remote))
 
     remote_ids_set = set(remote_ids)
     local_ids_set = set(local_ids)
-    missing = remote_ids_set - local_ids_set
+    missing = remote_ids_set - local_ids_set - error_ids_set
     leftovers = local_ids_set - remote_ids_set
     print(f"remote: {current_remote}")
     print()
@@ -171,6 +185,10 @@ def status():
     print("leftovers:")
     print("\n".join([f"    {i}" for i in leftovers]))
     print()
+    if error_ids_set:
+        print("errors:")
+        print("\n".join([f"    {i}" for i in error_ids_set]))
+        print()
 
     duplicates_local = utils.find_duplicates(remote_ids)
     if duplicates_local:
@@ -211,12 +229,10 @@ def list_entries(remote=None, verbose=False):
         if title_cache_file:
             shenanigans.load_title_cache(title_cache_file)
 
-        def append_name(listidlo, i):
+        def append_title(i):
             listidlo[i] = f"{listidlo[i]}  {title_getter(listidlo[i])}"
-        with concurrent.futures.ThreadPoolExecutor() as ex:
-            tasks = {ex.submit(append_name, listidlo, i) for i in range(len(listidlo))}
-            for future in concurrent.futures.as_completed(tasks):
-                future.result()
+
+        run_concurrently(append_title, range(len(listidlo)))
 
         if title_cache_file:
             shenanigans.save_title_cache(title_cache_file)

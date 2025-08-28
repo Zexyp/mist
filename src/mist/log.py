@@ -50,7 +50,7 @@ def log_verbose(msg):
     if _verbose: print(COL_DIM + msg + COL_RESET)
 
 def log_debug(msg):
-    if _debug: print(COL_DIM + msg + COL_RESET)
+    if _debug: print(COL_DIM + f"debug: {msg}" + COL_RESET)
 
 def log_warning(msg):
     print(COL_YELLOW + f"warning: {msg}" + COL_RESET, file=sys.stderr)

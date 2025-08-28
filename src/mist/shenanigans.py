@@ -1,13 +1,19 @@
+# TODO: name fallback
+
 import os
 from pprint import pprint
 from typing import Callable, Any
 import glob
 
 from yt_dlp import YoutubeDL
+from yt_dlp.utils import YoutubeDLError
 
 from .log import log_verbose, log_debug
-from . import name_purifier
+from . import title_purifier
 from .utils import sanitize_filename
+
+class ShenanigansError(Exception):
+    pass
 
 YAPPING = False
 
@@ -69,6 +75,8 @@ def load_title_cache(file):
         log_debug("cache empty")
 
 def shrimplify_name(entry):
+    raise Exception("obsolete")
+
     if entry["channel"] is None:
         log_verbose(f"channel none at '{entry['id']}'")
 
@@ -86,8 +94,11 @@ def get_remote_title(url):
 
     log_verbose("downloading remote title...")
 
-    with YoutubeDL(options) as ytdl:
-        data = ytdl.extract_info(url, download=False)
+    try:
+        with YoutubeDL(options) as ytdl:
+            data = ytdl.extract_info(url, download=False)
+    except YoutubeDLError as e:
+        raise ShenanigansError(e)
     assert data["_type"] == "playlist"
 
     return data["title"]
@@ -99,8 +110,11 @@ def get_remote_ids(url, start: int = None, end: int = None):
 
     log_verbose("downloading list...")
 
-    with YoutubeDL(options) as ytdl:
-        data = ytdl.extract_info(url, download=False)
+    try:
+        with YoutubeDL(options) as ytdl:
+            data = ytdl.extract_info(url, download=False)
+    except YoutubeDLError as e:
+        raise ShenanigansError(e)
     assert data["_type"] == "playlist"
 
     return [e["id"] for e in data["entries"]]
@@ -133,12 +147,8 @@ def get_remote_entry_title(identifier):
     if title_cache is not None and identifier in title_cache:
         return title_cache[identifier]
 
-    log_verbose("downloading remote entry title...")
-
-    with YoutubeDL(video_info_options) as ytdl:
-        data = ytdl.extract_info('http://www.youtube.com/watch?v=' + identifier, download=False)
-
-    name = shrimplify_name(data)
+    log_verbose("getting pure name")
+    name = title_purifier.purify(identifier)
 
     if title_cache is not None:
         title_cache[identifier] = name
@@ -147,11 +157,12 @@ def get_remote_entry_title(identifier):
 
 def process_entry(identifier, output_directory,
                   progress_hook: Callable = None):
-    name = get_remote_title(identifier)
+    name = get_remote_entry_title(identifier)
 
     def wrapper(*args, **kwargs):
         args[0]["title"] = name
-        progress_hook(*args, **kwargs)
+        args[0]["id"] = identifier
+        return progress_hook(*args, **kwargs)
 
     options = dict(video_options)
     if progress_hook is not None: options["progress_hooks"] = [wrapper]
@@ -164,5 +175,8 @@ def process_entry(identifier, output_directory,
 
     options['outtmpl'] = os.path.join(output_directory, sanitize_filename(name) + '.' + identifier + '.%(ext)s')
 
-    with YoutubeDL(options) as ytdl:
-        data = ytdl.download('http://www.youtube.com/watch?v=' + identifier)
+    try:
+        with YoutubeDL(options) as ytdl:
+            data = ytdl.download('http://www.youtube.com/watch?v=' + identifier)
+    except YoutubeDLError as e:
+        raise ShenanigansError(e)
