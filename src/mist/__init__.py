@@ -171,7 +171,7 @@ def status():
     current_remote = get_current_remote()
     remote_ids = get_remote_entries(current_remote)
     local_ids = shenanigans.get_local_ids(".")
-    error_ids_set = set(get_remote_errors(current_remote))
+    error_ids_set = set(get_remote_errors(current_remote) or [])
 
     remote_ids_set = set(remote_ids)
     local_ids_set = set(local_ids)
