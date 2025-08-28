@@ -1,7 +1,17 @@
+from http.client import RemoteDisconnected
+from time import sleep
+
 import requests
 
+from .log import log_error
+from .utils import RateLimiter
+
+limiter = RateLimiter(max_calls=10, period_seconds=20)
+session = requests.Session()
 # TODO: lang
 def purify(videoId):
+    limiter.acquire()
+
     json_data = {
         'videoId': videoId,
         'context': {
@@ -12,9 +22,17 @@ def purify(videoId):
         },
     }
 
-    response = requests.post('https://music.youtube.com/youtubei/v1/player', json=json_data)
+    try:
+        response = session.post('https://music.youtube.com/youtubei/v1/player', json=json_data)
+    except RemoteDisconnected:
+        log_error("getting throttled")
+        raise
     assert response.status_code == 200
+
     response_data = response.json()
+
+    if "videoDetails" not in response_data:
+        log_error("getting throttled, i guess?")
 
     details = response_data["videoDetails"]
     microformat = response_data["microformat"]

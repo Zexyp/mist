@@ -2,6 +2,9 @@ import collections
 from typing import AnyStr # ide kept yappin
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import math
+import time
+import threading
+from collections import deque
 
 from .log import *
 
@@ -150,3 +153,31 @@ def format_decimal_suffix(num, fmt='%d%s', *, factor=1000):
 
 def format_bytes(bytes):
     return format_decimal_suffix(bytes, '%.2f%sB', factor=1024) or 'N/A'
+
+
+class RateLimiter:
+    def __init__(self, max_calls, period_seconds):
+        self.max_calls = max_calls
+        self.period = period_seconds
+        self.calls = deque()
+        self.lock = threading.Lock()
+
+    def acquire(self):
+        with self.lock:
+            now = time.time()
+
+            def clear_timestamps():
+                while self.calls and now - self.calls[0] > self.period:
+                    self.calls.popleft()
+
+            clear_timestamps()
+
+            if len(self.calls) >= self.max_calls:
+                sleep_time = self.period - (now - self.calls[0])
+                # NOTE: rate is not spelled tate
+                log_verbose(f"rate limit hit, sleeping for {sleep_time:.2f}s")
+                time.sleep(sleep_time)
+                now = time.time()
+                clear_timestamps()
+
+            self.calls.append(time.time())

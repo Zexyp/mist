@@ -6,7 +6,7 @@ from typing import Callable, Any
 import glob
 
 from yt_dlp import YoutubeDL
-from yt_dlp.utils import YoutubeDLError
+from yt_dlp.utils import DownloadError
 
 from .log import log_verbose, log_debug
 from . import title_purifier
@@ -97,7 +97,7 @@ def get_remote_title(url):
     try:
         with YoutubeDL(options) as ytdl:
             data = ytdl.extract_info(url, download=False)
-    except YoutubeDLError as e:
+    except DownloadError as e:
         raise ShenanigansError(e)
     assert data["_type"] == "playlist"
 
@@ -113,7 +113,7 @@ def get_remote_ids(url, start: int = None, end: int = None):
     try:
         with YoutubeDL(options) as ytdl:
             data = ytdl.extract_info(url, download=False)
-    except YoutubeDLError as e:
+    except DownloadError as e:
         raise ShenanigansError(e)
     assert data["_type"] == "playlist"
 
@@ -178,5 +178,5 @@ def process_entry(identifier, output_directory,
     try:
         with YoutubeDL(options) as ytdl:
             data = ytdl.download('http://www.youtube.com/watch?v=' + identifier)
-    except YoutubeDLError as e:
+    except DownloadError as e:
         raise ShenanigansError(e)
