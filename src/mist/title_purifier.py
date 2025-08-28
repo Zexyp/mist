@@ -1,5 +1,6 @@
 import requests
 
+# TODO: lang
 def purify(videoId):
     json_data = {
         'videoId': videoId,
@@ -12,6 +13,7 @@ def purify(videoId):
     }
 
     response = requests.post('https://music.youtube.com/youtubei/v1/player', json=json_data)
+    assert response.status_code == 200
     response_data = response.json()
 
     details = response_data["videoDetails"]

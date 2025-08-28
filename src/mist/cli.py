@@ -16,8 +16,8 @@ def _parse_on_off(value: str | None) -> bool | None:
 
 def build_parser_remote(subparsers):
     parser = subparsers.add_parser("remote")
-    parser.add_argument("-v", "--verbose", action="store_true", default=None)
-    parser.set_defaults(func=lambda args: remote_list(args.verbose))
+    parser.add_argument("-v", "--verbose", action="store_true", dest="remote_verbose",)
+    parser.set_defaults(func=lambda args: remote_list(args.remote_verbose))
 
     subparsers_remote = parser.add_subparsers()
 
@@ -117,8 +117,8 @@ def build_parser():
 
     parser_list = subparsers.add_parser("list", aliases=["ls"])
     parser_list.add_argument("remote", nargs='?')
-    parser_list.add_argument("--verbose", action="store_true")
-    parser_list.set_defaults(func=lambda args: list_entries(args.remote, verbose=args.verbose))
+    parser_list.add_argument("--verbose", action="store_true", dest="list_verbose")
+    parser_list.set_defaults(func=lambda args: list_entries(args.remote, verbose=args.list_verbose))
 
     return parser
 

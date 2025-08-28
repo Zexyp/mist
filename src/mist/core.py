@@ -75,6 +75,7 @@ def get_current_remote():
 
 def get_remote_entries(remote):
     ensure_remote(remote)
+
     filepath = get_cache_path_for_remote(remote, CACHE_TYPE_ENTRIES)
     if not os.path.exists(filepath):
         raise NoDataFileError("no entries data")
@@ -85,6 +86,19 @@ def get_remote_entries(remote):
             remote_entries.append(line.strip())
 
     return remote_entries
+
+def get_remote_errors(remote):
+    ensure_remote(remote)
+
+    errors = None
+    error_cache_file = get_cache_path_for_remote(remote, CACHE_TYPE_ERRORS)
+    if os.path.exists(error_cache_file):
+        errors = []
+        with open(error_cache_file, "r") as file:
+            while line := file.readline():
+                errors.append(line.strip())
+
+    return errors
 
 def project_config_template(conf: configparser.ConfigParser):
     conf["core"] = {}
