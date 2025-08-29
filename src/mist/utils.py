@@ -1,10 +1,13 @@
 import collections
-from typing import AnyStr # ide kept yappin
+from functools import wraps
+from typing import AnyStr, Callable  # ide kept yappin
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import math
 import time
 import threading
 from collections import deque
+
+import requests
 
 from .log import *
 
@@ -175,9 +178,90 @@ class RateLimiter:
             if len(self.calls) >= self.max_calls:
                 sleep_time = self.period - (now - self.calls[0])
                 # NOTE: rate is not spelled tate
-                log_verbose(f"rate limit hit, sleeping for {sleep_time:.2f}s")
+                log_debug(f"rate limit hit, sleeping for {sleep_time:.2f}s")
                 time.sleep(sleep_time)
                 now = time.time()
                 clear_timestamps()
 
             self.calls.append(time.time())
+
+def assert_status_code(response: requests.Response, code=200):
+    assert response.status_code == code, f"status code anomaly ({response.status_code})"
+
+class FileCache:
+    def __init__(self,
+                 serialize: Callable = None,
+                 deserialize: Callable = None):
+        assert bool(serialize) == bool(deserialize)
+
+        self.cache: dict | None = None
+        self.serialize: Callable | None = serialize
+        self.deserialize: Callable | None = deserialize
+
+    def save_file(self, file):
+        assert self.cache is not None
+
+        log_debug(f"saving cache '{file}'")
+
+        os.makedirs(os.path.dirname(file), exist_ok=True)
+        with open(file, "w") as f:
+            for k, v in self.cache.items():
+                data = v
+
+                if self.serialize: data = self.serialize(data)
+
+                f.write(f"{k}: {data}\n")
+
+        self.cache = None
+
+        log_verbose("cache off")
+
+    def load_file(self, file):
+        assert self.cache is None
+
+        log_verbose("using cache")
+
+        self.cache = {}
+
+        log_debug(f"loading cache '{file}'")
+        if os.path.isfile(file):
+            with open(file, "r") as f:
+                while line := f.readline():
+                    parts = line.strip().split(": ", 1)
+
+                    data = parts[1]
+
+                    if self.deserialize: data = self.deserialize(data)
+
+                    self.cache[parts[0]] = data
+        else:
+            log_debug("cache empty")
+
+    # this is eew
+    def cached(self, func=None, key: Callable = None, ignore=None):
+        def decorator(actual_func):
+            @wraps(actual_func)
+            def wrapper(*args, **kwargs):
+                nonlocal key
+                if key is not None:
+                    dict_key = key(*args, **kwargs)
+                else:
+                    assert len(args) == 1 and not kwargs
+                    dict_key = args[0]
+                assert isinstance(dict_key, str)
+
+                if self.cache is not None and dict_key in self.cache:
+                    return self.cache[dict_key]
+
+                result = actual_func(*args, **kwargs)
+
+                if self.cache is not None and result != ignore:
+                    self.cache[dict_key] = result
+
+                return result
+            return wrapper
+
+        if func is not None and callable(func):
+            return decorator(func)
+
+        return decorator

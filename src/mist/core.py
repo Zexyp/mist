@@ -17,7 +17,7 @@ PROJECT_DIRECTORY_CACHE = PROJECT_DIRECTORY + "/cache"
 # TODO: bracketeer
 # TODO: genres
 # TODO: extended mix, vip check
-# TODO: mistconfig sound (on/off) and color (auto/off/force)
+# TODO: duration limit
 
 FILENAME_IGNORE = ".mistignore"
 FILENAME_CONFIG = ".mistconfig"
@@ -30,6 +30,7 @@ DEFAULT_ORIGIN_NAME = "origin"
 CACHE_TYPE_TITLES = "titles"
 CACHE_TYPE_ENTRIES = "entries"
 CACHE_TYPE_ERRORS = "errors"
+CACHE_TYPE_GENRES = "genres"
 
 _remote_section_template = "remote \"{name}\""
 

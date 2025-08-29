@@ -1,5 +1,3 @@
-# TODO: name fallback
-
 import os
 from pprint import pprint
 from typing import Callable, Any
@@ -10,7 +8,7 @@ from yt_dlp.utils import DownloadError
 
 from .log import log_verbose, log_debug
 from . import title_purifier
-from .utils import sanitize_filename
+from .utils import sanitize_filename, FileCache
 
 class ShenanigansError(Exception):
     pass
@@ -38,52 +36,7 @@ video_options = {
     "playlist": False,
 }
 
-title_cache: dict[str, str] | None = None
-
-def save_title_cache(file):
-    global title_cache
-
-    assert title_cache is not None
-
-    log_debug(f"saving cache '{file}'")
-
-    os.makedirs(os.path.dirname(file), exist_ok=True)
-    with open(file, "w") as f:
-        for k, v in title_cache.items():
-            f.write(f"{k}: {v}\n")
-
-    title_cache = None
-
-    log_verbose("cache off")
-
-def load_title_cache(file):
-    global title_cache
-
-    assert title_cache is None
-
-    log_verbose("using cache")
-
-    title_cache = {}
-
-    log_debug(f"loading cache '{file}'")
-    if os.path.isfile(file):
-        with open(file, "r") as f:
-            while line := f.readline():
-                parts = line.strip().split(": ", 1)
-                title_cache[parts[0]] = parts[1]
-    else:
-        log_debug("cache empty")
-
-def shrimplify_name(entry):
-    raise Exception("obsolete")
-
-    if entry["channel"] is None:
-        log_verbose(f"channel none at '{entry['id']}'")
-
-    log_verbose("purifying name")
-    name = name_purifier.purify(entry["id"])
-
-    return name
+title_cache: FileCache = FileCache()
 
 def get_remote_title(url):
     options = dict(playlist_options)
@@ -93,7 +46,6 @@ def get_remote_title(url):
     options["playlistend"] = 1
 
     log_verbose("downloading remote title...")
-
     try:
         with YoutubeDL(options) as ytdl:
             data = ytdl.extract_info(url, download=False)
@@ -109,7 +61,6 @@ def get_remote_ids(url, start: int = None, end: int = None):
     if end is not None: options["playlistend"] = end
 
     log_verbose("downloading list...")
-
     try:
         with YoutubeDL(options) as ytdl:
             data = ytdl.extract_info(url, download=False)
@@ -120,7 +71,7 @@ def get_remote_ids(url, start: int = None, end: int = None):
     return [e["id"] for e in data["entries"]]
 
 def get_local_ids(directory):
-    log_verbose("reading local ids...")
+    log_debug("reading local ids")
     ids = []
     for f in os.listdir(directory):
         if not os.path.isfile(os.path.join(directory, f)):
@@ -143,38 +94,35 @@ def get_local_entry_title(directory, identifier):
     assert len(titles) == 1, "incorrect find"
     return titles[0]
 
+@title_cache.cached
 def get_remote_entry_title(identifier):
-    if title_cache is not None and identifier in title_cache:
-        return title_cache[identifier]
-
-    log_verbose("getting pure name")
+    log_verbose(f"getting pure title")
     name = title_purifier.purify(identifier)
-
-    if title_cache is not None:
-        title_cache[identifier] = name
 
     return name
 
 def process_entry(identifier, output_directory,
                   progress_hook: Callable = None):
-    name = get_remote_entry_title(identifier)
+    try:
+        title = sanitize_filename(get_remote_entry_title(identifier))
+    except title_purifier.RateLimitHitError as e:
+        title = "%(title)s"
 
-    def wrapper(*args, **kwargs):
-        args[0]["title"] = name
+    def progress_wrapper(*args, **kwargs):
+        args[0]["title"] = title
         args[0]["id"] = identifier
         return progress_hook(*args, **kwargs)
 
     options = dict(video_options)
-    if progress_hook is not None: options["progress_hooks"] = [wrapper]
+    if progress_hook is not None: options["progress_hooks"] = [progress_wrapper]
 
     #if MAX_DURATION is not None and entry['duration'] > MAX_DURATION:
     #    log_verbose(f"skipping '{entry['id']}' (duration restriction)")
     #    return
 
-    log_verbose(f"downloading '{identifier}' ({name})...")
+    options['outtmpl'] = os.path.join(output_directory, title + '.' + identifier + '.%(ext)s')
 
-    options['outtmpl'] = os.path.join(output_directory, sanitize_filename(name) + '.' + identifier + '.%(ext)s')
-
+    log_verbose("downloading entry...")
     try:
         with YoutubeDL(options) as ytdl:
             data = ytdl.download('http://www.youtube.com/watch?v=' + identifier)

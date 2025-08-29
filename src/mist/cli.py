@@ -114,6 +114,8 @@ def build_parser():
     #parser_diff = subparsers.add_parser("diff")
     #parser_submodule = subparsers.add_parser("submodule")
     parser_config = build_parser_config(subparsers)
+    parser_tag = subparsers.add_parser("tag")
+    parser_tag.set_defaults(func=lambda args: tag())
 
     parser_list = subparsers.add_parser("list", aliases=["ls"])
     parser_list.add_argument("remote", nargs='?')

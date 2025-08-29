@@ -1,7 +1,7 @@
 import os
 import concurrent.futures
 
-from . import shenanigans
+from . import shenanigans, genrefier
 from .errors import *
 from .log import notify_target, log_error
 from .utils import url_strip_utm, url_strip_share_identifier, sanitize_filename, print_progress_bar, format_bytes
@@ -58,6 +58,9 @@ from .commands.remote import *
 
 @command_print_call
 def fetch(remote=None, all=False, set_upstream=False):
+    if all:
+        raise NotImplementedError("fetching all remotes is not yet implemented")
+
     load_project_config()
 
     if set_upstream:
@@ -95,7 +98,7 @@ def merge(remote):
         return
 
     title_cache_file = get_cache_path_for_remote(remote, CACHE_TYPE_TITLES)
-    shenanigans.load_title_cache(title_cache_file)
+    shenanigans.title_cache.load_file(title_cache_file)
 
     entries_length = len(entries)
     i = 0
@@ -119,32 +122,33 @@ def merge(remote):
             case _:
                 assert False, "unknown status"
 
-    print_progress_bar(0, entries_length, prefix="Preparing...")
-    try:
-        def handle_entry(entry):
-            try:
-                shenanigans.process_entry(entry, output_directory=directory,
-                                          progress_hook=progress_hook)
-            except shenanigans.ShenanigansError as e:
-                failed.append(entry)
-                log_error(repr(e))
+    def handle_entry(entry):
+        try:
+            shenanigans.process_entry(entry, output_directory=directory,
+                                      progress_hook=progress_hook)
+        except shenanigans.ShenanigansError as e:
+            failed.append(entry)
+            log_error(repr(e))
 
+    print_progress_bar(0, entries_length, prefix="Preparing...")
+
+    try:
         run_concurrently(handle_entry, entries)
     except KeyboardInterrupt:
         print("stopped")
     else:
         notify_target()
         print_progress_bar(entries_length, entries_length, prefix="Done", finish=True)
-    finally:
-        shenanigans.save_title_cache(title_cache_file)
 
-        if len(failed) > 0:
-            error_cache_file = get_cache_path_for_remote(remote, CACHE_TYPE_ERRORS)
-            os.makedirs(os.path.dirname(error_cache_file), exist_ok=True)
-            with open(error_cache_file, "w") as file:
-                for item in {*failed, *error_ids}:
-                    file.write(f"{item}\n")
-            log_verbose("new errors recorded")
+    shenanigans.title_cache.save_file(title_cache_file)
+
+    if len(failed) > 0:
+        error_cache_file = get_cache_path_for_remote(remote, CACHE_TYPE_ERRORS)
+        os.makedirs(os.path.dirname(error_cache_file), exist_ok=True)
+        with open(error_cache_file, "w") as file:
+            for item in {*failed, *error_ids}:
+                file.write(f"{item}\n")
+        log_verbose("new errors recorded")
 
 
 ### pull
@@ -190,7 +194,7 @@ def status():
         print("\n".join([f"    {i}" for i in error_ids_set]))
         print()
 
-    duplicates_local = utils.find_duplicates(remote_ids)
+    duplicates_local = utils.find_duplicates(local_ids)
     if duplicates_local:
         print("local duplicates:")
         print("\n".join([f"    {i}" for i in duplicates_local]))
@@ -215,6 +219,7 @@ def checkout(remote):
 @command_print_call
 def list_entries(remote=None, verbose=False):
     title_cache_file = None
+    directory = "."
     if remote:
         load_project_config()
         listidlo = get_remote_entries(remote)
@@ -222,23 +227,49 @@ def list_entries(remote=None, verbose=False):
 
         title_cache_file = get_cache_path_for_remote(remote, CACHE_TYPE_TITLES)
     else:
-        listidlo = shenanigans.get_local_ids(".")
-        title_getter = lambda x: shenanigans.get_local_entry_title(".", x)
+        listidlo = shenanigans.get_local_ids(directory)
+        title_getter = lambda x: shenanigans.get_local_entry_title(directory, x)
 
     if verbose:
         if title_cache_file:
-            shenanigans.load_title_cache(title_cache_file)
+            shenanigans.title_cache.load_file(title_cache_file)
 
         def append_title(i):
             listidlo[i] = f"{listidlo[i]}  {title_getter(listidlo[i])}"
 
-        run_concurrently(append_title, range(len(listidlo)))
+        try:
+            run_concurrently(append_title, range(len(listidlo)))
+        except KeyboardInterrupt:
+            print("stopped")
 
         if title_cache_file:
-            shenanigans.save_title_cache(title_cache_file)
+            shenanigans.title_cache.save_file(title_cache_file)
 
     print("\n".join(listidlo))
 
 ### config
 
 from .commands.config import *
+
+### tag
+
+def tag():
+    load_project_config()
+
+    directory = "."
+    tag_cache_file = os.path.join(PROJECT_DIRECTORY_CACHE, "tags")
+    genrefier.tag_cache.load_file(tag_cache_file)
+
+    entries = shenanigans.get_local_ids(directory)
+
+    def append_tags(i):
+        entries[i] = f"{entries[i]}  {genrefier.find_tags(entries[i], shenanigans.get_local_entry_title(directory, entries[i]))}"
+
+    try:
+        run_concurrently(append_tags, range(len(entries)))
+    except KeyboardInterrupt:
+        print("stopped")
+
+    print("\n".join(entries))
+
+    genrefier.tag_cache.save_file(tag_cache_file)
