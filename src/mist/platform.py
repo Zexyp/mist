@@ -8,7 +8,7 @@ from .log import log_warning, log_verbose, log_error, log_debug
 
 def is_termux():
     if platform.system() == 'Linux':
-        return subprocess.check_output(['uname', '-o']).strip() == "Android"
+        return subprocess.check_output(['uname', '-o']).strip() == b"Android"
     return False
 
 def run_concurrently(func: Callable, args_list: Iterable) -> Iterable:
