@@ -10,7 +10,7 @@ URL_HOST_YOUTUBE = "https://www.youtube.com"
 URL_HOST_YOUTUBE_MUSIC = "https://music.youtube.com"
 
 URL_POST_YOUTUBE_LINKS = URL_HOST_YOUTUBE + "/youtubei/v1/browse"
-URL_POST_YOUTUBE_MUSIC_TITLE = URL_HOST_YOUTUBE_MUSIC + "/youtubei/v1/browse"
+URL_POST_YOUTUBE_MUSIC_TITLE = URL_HOST_YOUTUBE_MUSIC + "/youtubei/v1/player"
 
 limiter = RateLimiter(max_calls=10, period_seconds=20)
 

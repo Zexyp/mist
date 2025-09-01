@@ -30,7 +30,7 @@ DEFAULT_ORIGIN_NAME = "origin"
 CACHE_TYPE_TITLES = "titles"
 CACHE_TYPE_ENTRIES = "entries"
 CACHE_TYPE_ERRORS = "errors"
-CACHE_TYPE_GENRES = "genres"
+CACHE_TYPE_TAGS = "tags"
 
 _remote_section_template = "remote \"{name}\""
 

@@ -1,3 +1,4 @@
+import json
 import os
 import concurrent.futures
 
@@ -56,28 +57,7 @@ from .commands.remote import *
 
 ### fetch
 
-@command_print_call
-def fetch(remote=None, all=False, set_upstream=False):
-    if all:
-        raise NotImplementedError("fetching all remotes is not yet implemented")
-
-    load_project_config()
-
-    if set_upstream:
-        checkout(remote)
-
-    if remote is None:
-        remote = get_current_remote()
-
-    remote_data = ensure_remote(remote)
-
-    remote_ids = shenanigans.get_remote_ids(remote_data["url"])
-
-    filepath = get_cache_path_for_remote(remote, CACHE_TYPE_ENTRIES)
-    os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    with open(filepath, "w") as file:
-        for id in remote_ids:
-            file.write(f"{id}\n")
+from .commands.fetch import *
 
 ### merge
 
@@ -138,7 +118,7 @@ def merge(remote):
         print("stopped")
     else:
         notify_target()
-        print_progress_bar(entries_length, entries_length, prefix="Done", finish=True)
+        print_progress_bar(i, entries_length, prefix="Done", finish=True)
 
     shenanigans.title_cache.save_file(title_cache_file)
 
@@ -257,19 +237,19 @@ def tag():
     load_project_config()
 
     directory = "."
-    tag_cache_file = os.path.join(PROJECT_DIRECTORY_CACHE, "tags")
-    genrefier.tag_cache.load_file(tag_cache_file)
+    tag_cache_file = get_cache_path_for_remote(get_current_remote(), CACHE_TYPE_TAGS)
+    if not os.path.isfile(tag_cache_file):
+        raise NoDataFileError("mby fetch *tags* first")
 
     entries = shenanigans.get_local_ids(directory)
 
-    def append_tags(i):
-        entries[i] = f"{entries[i]}  {genrefier.find_tags(entries[i], shenanigans.get_local_entry_title(directory, entries[i]))}"
-
-    try:
-        run_concurrently(append_tags, range(len(entries)))
-    except KeyboardInterrupt:
-        print("stopped")
+    tags_dict = {}
+    with open(tag_cache_file, "r") as file:
+        while line := file.readline():
+            parts = line.split(": ", 1)
+            tags_dict[parts[0]] = json.loads(parts[1])
+    for i in range(len(entries)):
+        if entries[i] in tags_dict:
+            entries[i] = f"{entries[i]}  {', '.join([repr(t) for t in tags_dict[entries[i]]])}"
 
     print("\n".join(entries))
-
-    genrefier.tag_cache.save_file(tag_cache_file)

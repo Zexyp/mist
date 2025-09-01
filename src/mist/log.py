@@ -86,7 +86,8 @@ def notify_target():
 try:
     import colorama
     init_colors()
-except ImportError:
+except ImportError as e:
+    log_exception(e)
     colorama = None
     log_warning("color module import error (colorama)")
 
@@ -94,6 +95,7 @@ except ImportError:
 try:
     logging.getLogger("playsound").setLevel(logging.ERROR)  # way to make this nigga shut up
     from playsound import playsound
-except ImportError:
+except ImportError as e:
+    log_exception(e)
     playsound = None
     log_warning("sound module import error (playsound)")

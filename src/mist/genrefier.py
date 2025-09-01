@@ -1,10 +1,15 @@
 import json
 from urllib.parse import urljoin
 
-import requests
-from lxml import etree
+from .log import log_verbose, log_debug, log_warning, log_exception
 
-from .log import log_verbose, log_debug
+import requests
+try: from lxml import etree
+except ImportError as e:
+    log_exception(e)
+    etree = None
+    log_warning("parsing module import error (lxml)")
+
 from .utils import FileCache, assert_status_code
 
 URL_HOST = "https://www.last.fm"
@@ -18,6 +23,9 @@ def get_tags_direct(artist: str, title: str) -> list[str]:
     return _extrac_tags(URL_GET_DIRECT_TEMPLATE.format(artist=artist, title=title))
 
 def _extrac_tags(track_url):
+    if not etree:
+        return None
+
     log_verbose(f"getting tags")
     response = requests.get(track_url)
     assert_status_code(response)
@@ -29,6 +37,9 @@ def _extrac_tags(track_url):
 
 @tag_cache.cached(key=lambda i, t: i)
 def find_tags(ident: str, title: str) -> list[str] | None:
+    if not etree:
+        return None
+
     search_params = {
         "q": title,
     }

@@ -38,8 +38,24 @@ pkg install ffmpeg
 You will have to go down the rabbit hole...
 
 ### Optional modules
-- `colorama` (https://pypi.org/project/colorama/)
-- `playsound` (https://pypi.org/project/playsound/)
+To install all optional modules you can use supplied `optional-requirements.txt`:
+```sh
+pip install -r optional-requirements.txt
+```
+
+#### `colorama` (https://pypi.org/project/colorama/)
+Colorful logging.
+
+#### `playsound` (https://pypi.org/project/playsound/)
+To inform about completion or failure.
+
+#### `lxml` (https://pypi.org/project/lxml/)
+Additional tag scraping.
+
+On **Termux** dependencies need to be installed:
+```sh
+pkg install libxml2 libxslt
+```
 
 > [!CAUTION]
 > Undefined operation leads to undefined behavior.

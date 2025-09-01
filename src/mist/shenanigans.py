@@ -125,6 +125,7 @@ def process_entry(identifier, output_directory,
     log_verbose("downloading entry...")
     try:
         with YoutubeDL(options) as ytdl:
+            # https://api.soundcloud.com/tracks/{identifier}
             data = ytdl.download('http://www.youtube.com/watch?v=' + identifier)
     except DownloadError as e:
         raise ShenanigansError(e)

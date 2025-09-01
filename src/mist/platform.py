@@ -5,6 +5,7 @@ import traceback
 from typing import Callable, Iterable
 
 from .log import log_warning, log_verbose, log_error, log_debug
+from .core import configuration
 
 def is_termux():
     if platform.system() == 'Linux':
@@ -23,10 +24,10 @@ def run_concurrently(func: Callable, args_list: Iterable) -> Iterable:
         except Exception as e:
             log_debug(traceback.format_exc())
             log_verbose(type(e).__name__)
-            log_error(f"concurrent task failed: {repr(e)}")
+            log_error(f"task {tid} failed: {repr(e)}")
             return e
 
-    if is_termux():
+    if False:
         log_warning("concurrency is not supported on this platform")
 
         def implementation():
@@ -34,7 +35,7 @@ def run_concurrently(func: Callable, args_list: Iterable) -> Iterable:
     else:
         def implementation():
             try:
-                with concurrent.futures.ThreadPoolExecutor() as executor:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=configuration.get("core", "concurrency", fallback=None)) as executor:
                     results = executor.map(safety_wrapper, args_list)
                 return results
             except KeyboardInterrupt:
