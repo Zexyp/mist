@@ -3,10 +3,20 @@ from .. import command_print_call
 
 DEFAULT_KIND = "local"
 
-def _split_key(key) -> (str, str):
+def _join_key(section, option):
+    # handling of remote section names
+    absolute_cinema = "\""
+    return f"{'.'.join([v.strip(absolute_cinema) for v in section.split(' ') if v])}.{option}"
+
+def _split_key(key) -> tuple[str, str]:
     parts = key.split(".", 1)
     section = parts[0]
     option = parts[1]
+    if "." in option:
+        parts = option.split(".")
+        section = f"{section} \"{parts[0]}\""
+        option = parts[1]
+    assert "." not in section, "what the skibidi"
     return section, option
 
 
@@ -41,9 +51,7 @@ def _config_list(kind):
 
     for section in active_conf.sections():
         for key, value in active_conf[section].items():
-            # handling of remote section names
-            absolute_cinema = "\""
-            print(f"{'.'.join([v.strip(absolute_cinema) for v in section.split(' ')])}.{key}={value}")
+            print(f"{_join_key(section, key)}={value}")
 
 
 def _config_get_active(kind):

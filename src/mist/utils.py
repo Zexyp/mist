@@ -47,7 +47,7 @@ def sanitize_filename(name):
     replacement_char = '_'
     for ch in ['\\', '/', '*', '?', '"', '<', '>', '|']:
         name = name.replace(ch, replacement_char)
-    assert name != "." and name != ".."
+    assert name != "." and ".." not in name
     return name
 
 def find_duplicates(items: list):

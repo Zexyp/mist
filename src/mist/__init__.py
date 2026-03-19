@@ -2,7 +2,7 @@ import json
 import os
 import concurrent.futures
 
-from . import shenanigans, genrefier
+from . import shenanigans, metadata
 from .errors import *
 from .log import notify_target, log_error
 from .utils import url_strip_utm, url_strip_share_identifier, sanitize_filename, print_progress_bar, format_bytes
@@ -66,9 +66,9 @@ def merge(remote):
     load_project_config()
 
     directory = "."
-    local_ids = set(shenanigans.get_local_ids(directory))
-    remote_ids = set(get_remote_entries(remote))
-    error_ids = set(get_remote_errors(remote) or [])
+    local_ids = set(metadata.local.get_entries(directory))
+    remote_ids = set(core.remote.get_entries(remote))
+    error_ids = set(core.remote.get_errors(remote) or [])
     if error_ids:
         log_verbose("errors will be skipped")
 
@@ -77,8 +77,11 @@ def merge(remote):
         print("up to date")
         return
 
-    title_cache_file = get_cache_path_for_remote(remote, CACHE_TYPE_TITLES)
-    shenanigans.title_cache.load_file(title_cache_file)
+    remote_data = core.remote.ensure(remote)
+    pltf = metadata.detect_platform(remote_data["url"])
+
+    metadata_cache_file = core.remote.get_cache_path(remote)
+    metadata.load_cache(metadata_cache_file)
 
     entries_length = len(entries)
     i = 0
@@ -90,8 +93,8 @@ def merge(remote):
         match d["status"]:
             case "downloading":
                 downloaded = d["downloaded_bytes"]
-                total = d["total_bytes"]
-                percent = downloaded / total * 100
+                total = d.get("total_bytes", 0)
+                percent = downloaded / total * 100 if total else 0
                 speed = d["speed"]
                 eta = d["eta"]
                 msg = f"{format_bytes(total)} at {format_bytes(speed)}/s"
@@ -104,7 +107,7 @@ def merge(remote):
 
     def handle_entry(entry):
         try:
-            shenanigans.process_entry(entry, output_directory=directory,
+            shenanigans.process_entry(pltf, entry, output_directory=directory,
                                       progress_hook=progress_hook)
         except shenanigans.ShenanigansError as e:
             failed.append(entry)
@@ -120,16 +123,15 @@ def merge(remote):
         notify_target()
         print_progress_bar(i, entries_length, prefix="Done", finish=True)
 
-    shenanigans.title_cache.save_file(title_cache_file)
+    metadata.save_cache(metadata_cache_file)
 
     if len(failed) > 0:
-        error_cache_file = get_cache_path_for_remote(remote, CACHE_TYPE_ERRORS)
+        error_cache_file = core.remote.get_cache_path(remote, CACHE_TYPE_ERRORS)
         os.makedirs(os.path.dirname(error_cache_file), exist_ok=True)
         with open(error_cache_file, "w") as file:
             for item in {*failed, *error_ids}:
                 file.write(f"{item}\n")
         log_verbose("new errors recorded")
-
 
 ### pull
 
@@ -141,49 +143,14 @@ def pull(remote=None, set_upstream=False):
         checkout(remote)
 
     if remote is None:
-        remote = get_current_remote()
+        remote = core.remote.get_current()
 
     fetch(remote=remote)
     merge(remote=remote)
 
 ### status
 
-@command_print_call
-def status():
-    load_project_config()
-
-    current_remote = get_current_remote()
-    remote_ids = get_remote_entries(current_remote)
-    local_ids = shenanigans.get_local_ids(".")
-    error_ids_set = set(get_remote_errors(current_remote) or [])
-
-    remote_ids_set = set(remote_ids)
-    local_ids_set = set(local_ids)
-    missing = remote_ids_set - local_ids_set - error_ids_set
-    leftovers = local_ids_set - remote_ids_set
-    print(f"remote: {current_remote}")
-    print()
-    print("missing:")
-    print("\n".join([f"    {i}" for i in missing]))
-    print()
-    print("leftovers:")
-    print("\n".join([f"    {i}" for i in leftovers]))
-    print()
-    if error_ids_set:
-        print("errors:")
-        print("\n".join([f"    {i}" for i in error_ids_set]))
-        print()
-
-    duplicates_local = utils.find_duplicates(local_ids)
-    if duplicates_local:
-        print("local duplicates:")
-        print("\n".join([f"    {i}" for i in duplicates_local]))
-        print()
-    duplicates_remote = utils.find_duplicates(remote_ids)
-    if duplicates_remote:
-        print("remote duplicates:")
-        print("\n".join([f"    {i}" for i in duplicates_remote]))
-        print()
+from .commands.status import *
 
 ### checkout
 
@@ -191,28 +158,30 @@ def status():
 def checkout(remote):
     load_project_config()
 
-    ensure_remote(remote)
-    set_current_remote(remote)
+    core.remote.ensure(remote)
+    core.remote.set_current(remote)
 
 ### list
 
 @command_print_call
 def list_entries(remote=None, verbose=False):
-    title_cache_file = None
+    metadata_cache_dir = None
     directory = "."
     if remote:
         load_project_config()
-        listidlo = get_remote_entries(remote)
-        title_getter = shenanigans.get_remote_entry_title
+        remote_url = core.remote.ensure(remote)["url"]
 
-        title_cache_file = get_cache_path_for_remote(remote, CACHE_TYPE_TITLES)
+        listidlo = core.remote.get_entries(remote)
+        title_getter = lambda x: metadata.get_full_title(metadata.detect_platform(remote_url), x)
+
+        metadata_cache_dir = core.remote.get_cache_path(remote)
     else:
-        listidlo = shenanigans.get_local_ids(directory)
-        title_getter = lambda x: shenanigans.get_local_entry_title(directory, x)
+        listidlo = metadata.local.get_entries(directory)
+        title_getter = lambda x: metadata.local.get_entry_title(directory, x)
 
     if verbose:
-        if title_cache_file:
-            shenanigans.title_cache.load_file(title_cache_file)
+        if metadata_cache_dir:
+            metadata.load_cache(metadata_cache_dir)
 
         def append_title(i):
             listidlo[i] = f"{listidlo[i]}  {title_getter(listidlo[i])}"
@@ -222,8 +191,8 @@ def list_entries(remote=None, verbose=False):
         except KeyboardInterrupt:
             print("stopped")
 
-        if title_cache_file:
-            shenanigans.title_cache.save_file(title_cache_file)
+        if metadata_cache_dir:
+            metadata.save_cache(metadata_cache_dir)
 
     print("\n".join(listidlo))
 
@@ -237,19 +206,21 @@ def tag():
     load_project_config()
 
     directory = "."
-    tag_cache_file = get_cache_path_for_remote(get_current_remote(), CACHE_TYPE_TAGS)
-    if not os.path.isfile(tag_cache_file):
+    remote_name = core.remote.get_current()
+    metadata_cache_dir = core.remote.get_cache_path(remote_name)
+    if not os.path.isfile(core.remote.get_cache_path(remote_name, CACHE_TYPE_METADATA)):
         raise NoDataFileError("mby fetch *tags* first")
 
-    entries = shenanigans.get_local_ids(directory)
+    entries = metadata.local.get_entries(directory)
+    remote_entries = core.remote.get_entries(remote_name)
+    entries = [x for x in entries if x in remote_entries]
 
-    tags_dict = {}
-    with open(tag_cache_file, "r") as file:
-        while line := file.readline():
-            parts = line.split(": ", 1)
-            tags_dict[parts[0]] = json.loads(parts[1])
+    metadata.load_cache(metadata_cache_dir)
+    pltf = metadata.detect_platform(core.remote.ensure(remote_name)["url"])
+
     for i in range(len(entries)):
-        if entries[i] in tags_dict:
-            entries[i] = f"{entries[i]}  {', '.join([repr(t) for t in tags_dict[entries[i]]])}"
+        entries[i] = f"{entries[i]}  {metadata.get_tags(pltf, entries[i])}"
+
+    metadata.save_cache(metadata_cache_dir)
 
     print("\n".join(entries))

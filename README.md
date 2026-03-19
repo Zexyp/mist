@@ -37,6 +37,14 @@ pkg install ffmpeg
 #### Windows
 You will have to go down the rabbit hole...
 
+### lxml
+
+#### Termux
+Dependencies for `lxml` (https://pypi.org/project/lxml/) module need to be installed.
+```sh
+pkg install libxml2 libxslt
+```
+
 ### Optional modules
 To install all optional modules you can use supplied `optional-requirements.txt`:
 ```sh
@@ -48,14 +56,6 @@ Colorful logging.
 
 #### `playsound` (https://pypi.org/project/playsound/)
 To inform about completion or failure.
-
-#### `lxml` (https://pypi.org/project/lxml/)
-Additional tag scraping.
-
-On **Termux** dependencies need to be installed:
-```sh
-pkg install libxml2 libxslt
-```
 
 > [!CAUTION]
 > Undefined operation leads to undefined behavior.

@@ -1,12 +1,11 @@
 import argparse
-import sys
-import traceback
-from tabnanny import verbose
 
 from . import *
 from . import shenanigans
 from . import log
 from . import core
+
+# FIXME: separate visuals from functionality
 
 def _parse_on_off(value: str | None) -> bool | None:
     match value:
@@ -92,7 +91,7 @@ def build_parser():
     parser.add_argument("--version", action="version", version=f"Mist {version(__package__)}")
     parser.add_argument("--debug", action="store_true", default=None)
     parser.add_argument("--verbose", action="store_true", default=None)
-    parser.add_argument("--color", choices=["auto", "off", "force"])
+    parser.add_argument("--color", choices=["auto", "force", "off"])
     parser.add_argument("--sound", choices=["on", "off"])
     parser.add_argument("-C")
 
@@ -117,6 +116,9 @@ def build_parser():
     parser_config = build_parser_config(subparsers)
     parser_tag = subparsers.add_parser("tag")
     parser_tag.set_defaults(func=lambda args: tag())
+    parser_diff = subparsers.add_parser("diff")
+    parser_rm = subparsers.add_parser("rm")
+    parser_restore = subparsers.add_parser("restore")
 
     parser_list = subparsers.add_parser("list", aliases=["ls"])
     parser_list.add_argument("remote", nargs='?')

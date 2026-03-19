@@ -1,16 +1,13 @@
 import json
 from urllib.parse import urljoin
 
-from .log import log_verbose, log_debug, log_warning, log_exception
-
 import requests
-try: from lxml import etree
-except ImportError as e:
-    log_exception(e)
-    etree = None
-    log_warning("parsing module import error (lxml)")
+from lxml import etree
 
-from .utils import FileCache, assert_status_code
+from ..utils import FileCache, assert_status_code
+from ..log import log_verbose, log_debug, log_warning, log_exception
+
+# TODO: youtube also has some sort of tags
 
 URL_HOST = "https://www.last.fm"
 URL_GET_DIRECT_TEMPLATE = "https://www.last.fm/music/{artist}/_/{title}/+tags"
@@ -36,7 +33,7 @@ def _extrac_tags(track_url):
     return tags
 
 @tag_cache.cached(key=lambda i, t: i)
-def find_tags(ident: str, title: str) -> list[str] | None:
+def search_tags(ident: str, title: str) -> list[str] | None:
     if not etree:
         return None
 
@@ -57,3 +54,11 @@ def find_tags(ident: str, title: str) -> list[str] | None:
     return _extrac_tags(urljoin(URL_HOST, tracks[0]))
 
 # ezyzee
+
+def get_links(url):
+    response = requests.get(url)
+    assert_status_code(response)
+
+    tree = etree.HTML(response.content)
+    return tree.xpath("//h3[text()='External Links']/../ul/li/a/@href")
+

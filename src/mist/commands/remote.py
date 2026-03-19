@@ -1,17 +1,17 @@
 from ..core import *
 from ..utils import *
-from .. import command_print_call
+from .. import command_print_call, core
 
 @command_print_call
 def remote_list(verbose=False):
     load_project_config()
 
-    for section in project_config.sections():
-        if section.startswith("remote"):
-            print(section.removeprefix("remote").strip().strip("\""), end="")
-            if verbose:
-                print("  " + project_config[section]["url"], end="")
-            print()
+    for r in get_remotes():
+        r_url = core.remote.ensure(r)["url"]
+        print(r, end="")
+        if verbose:
+            print("  " + r_url, end="")
+        print()
 
     save_project_config()
 
@@ -23,7 +23,7 @@ def remote_add(name, url):
 
     load_project_config()
 
-    add_remote(name)
+    core.remote.add(name)
 
     save_project_config()
 
@@ -35,7 +35,7 @@ def remote_set_url(name, newurl):
 
     load_project_config()
 
-    remote_data = ensure_remote(name)
+    remote_data = core.remote.ensure(name)
 
     newurl = url_strip_share_identifier(newurl)
     newurl = url_strip_utm(newurl)
@@ -48,6 +48,6 @@ def remote_remove(name):
 
     load_project_config()
 
-    del_remote(name)
+    core.remote.delete(name)
 
     save_project_config()

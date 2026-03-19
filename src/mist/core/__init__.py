@@ -5,9 +5,9 @@ from functools import cache
 from importlib.metadata import version
 from pathlib import Path
 
-from .errors import *
-from . import log
-from .log import log_debug, log_verbose
+from ..errors import *
+from .. import log
+from ..log import log_debug, log_verbose
 
 PROJECT_DIRECTORY = ".mist"
 PROJECT_FILEPATH_CONFIG = PROJECT_DIRECTORY + "/config"
@@ -31,75 +31,19 @@ CACHE_TYPE_TITLES = "titles"
 CACHE_TYPE_ENTRIES = "entries"
 CACHE_TYPE_ERRORS = "errors"
 CACHE_TYPE_TAGS = "tags"
+CACHE_TYPE_METADATA = "metadata"
 
-_remote_section_template = "remote \"{name}\""
-
-project_config: configparser.ConfigParser = configparser.ConfigParser()
 global_config: configparser.ConfigParser = configparser.ConfigParser()
-configuration: configparser.ConfigParser = configparser.ConfigParser()
+project_config: configparser.ConfigParser = configparser.ConfigParser()
 forced_config: configparser.ConfigParser = configparser.ConfigParser()
+configuration: configparser.ConfigParser = configparser.ConfigParser()
 
-def ensure_remote(remote):
-    section_name = _remote_section_template.format(name=remote)
-    if not section_name in project_config.sections():
-        raise RemoteNotFoundError(f"no such remote '{remote}'")
-    return project_config[section_name]
-
-def del_remote(remote):
-    section_name = _remote_section_template.format(name=remote)
-    if not section_name in project_config.sections():
-        raise RemoteNotFoundError(f"no such remote '{remote}'")
-    del project_config[section_name]
-
-def add_remote(remote):
-    section_name = _remote_section_template.format(name=remote)
-    if section_name in project_config.sections():
-        raise RemoteExistsError("already exists")
-    project_config[section_name] = {}
-
-def get_cache_path_for_remote(remote, type):
-    path = os.path.join(PROJECT_DIRECTORY_CACHE, remote, type)
-    return path
-
-def set_current_remote(remote):
-    assert remote is not None, "no remote specified"
-    ensure_remote(remote)
-
-    with open(PROJECT_FILEPATH_REMOTE, "w") as file:
-        file.write(remote)
-
-def get_current_remote():
-    assert os.path.exists(PROJECT_FILEPATH_REMOTE), "no remote"
-    with open(PROJECT_FILEPATH_REMOTE, "r") as file:
-        remote = file.readline()
-    return remote
-
-def get_remote_entries(remote):
-    ensure_remote(remote)
-
-    filepath = get_cache_path_for_remote(remote, CACHE_TYPE_ENTRIES)
-    if not os.path.exists(filepath):
-        raise NoDataFileError("no entries data")
-
-    remote_entries = []
-    with open(filepath, "r") as file:
-        while line := file.readline():
-            remote_entries.append(line.strip())
-
-    return remote_entries
-
-def get_remote_errors(remote):
-    ensure_remote(remote)
-
-    errors = None
-    error_cache_file = get_cache_path_for_remote(remote, CACHE_TYPE_ERRORS)
-    if os.path.exists(error_cache_file):
-        errors = []
-        with open(error_cache_file, "r") as file:
-            while line := file.readline():
-                errors.append(line.strip())
-
-    return errors
+def get_remotes():
+    remotes = []
+    for section in project_config.sections():
+        if section.startswith("remote"):
+            remotes.append(section.removeprefix("remote").strip().strip("\""))
+    return remotes
 
 def project_config_template(conf: configparser.ConfigParser):
     conf["core"] = {}
@@ -201,3 +145,5 @@ def _configurator_local():
 
 def _configurator_global():
     pass
+
+from . import remote
