@@ -73,13 +73,50 @@ class Mist:
 
         return target_dir
 
-    def remote_add(self):
+    # now operates on local config
+    def _assert_remote(self, name: str):
+        section_name = f"remote.{name}"
+        if not self.config.local.has(f"{section_name}.url"):
+            raise MistError(f"No such remote '{name}'")
+
+    def remotes_list(self) -> list[str]:
+        ls = set()
+        for key in self.config.local.settings:
+            if key.startswith("remote."):
+                name = key.removeprefix("remote.").split(".", 1)[0]
+                ls.add(name)
+        return list(ls)
+
+    def remote_add(self, name: str, url: str):
+        section_name = f"remote.{name}"
+
+        if self.config.local.has(f"{section_name}.url"):
+            raise MistError(f"remote {name} already exists.")
+
+        self.config.local.set(f"{section_name}.url", url)
+        self.config.local.save()
+
+    def remote_remove(self, name: str):
+        self._assert_remote(name)
+
         raise NotImplementedError
-    def remote_remove(self):
+
+    def remote_rename(self, old_name: str, new_name: str):
+        self._assert_remote(old_name)
+
         raise NotImplementedError
-    def remote_rename(self):
-        raise NotImplementedError
-    def remote_get_url(self):
-        raise NotImplementedError
-    def remote_set_url(self):
-        raise NotImplementedError
+
+    def remote_get_url(self, name: str) -> str:
+        self._assert_remote(name)
+
+        section_name = f"remote.{name}"
+
+        return self.config.local.get(f"{section_name}.url")
+
+    def remote_set_url(self, name: str, new_url: str):
+        self._assert_remote(name)
+
+        section_name = f"remote.{name}"
+
+        self.config.local.set(f"{section_name}.url", new_url)
+        self.config.local.save()

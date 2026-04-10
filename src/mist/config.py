@@ -18,11 +18,14 @@ class SimpleConfig:
         self.path = path
         self._on_commit = on_commit
 
+    def has(self, key: str) -> bool:
+        return key in self.settings
+
     # fixme: i'm crying
-    def get(self, key, default) -> str:
+    def get(self, key: str, default) -> str:
         return self.settings.get(key, default)
 
-    def getbool(self, key, default) -> bool:
+    def getbool(self, key: str, default) -> bool:
         match self.settings.get(key, "1" if default else "0"):
             case "true" | "on" | "yes" | "1":
                 return True
@@ -31,13 +34,13 @@ class SimpleConfig:
             case _:
                 raise ValueError("Invalid setting value")
 
-    def getint(self, key, default) -> int:
+    def getint(self, key: str, default) -> int:
         return int(self.settings.get(key, str(default)))
 
-    def set(self, key, value):
+    def set(self, key: str, value):
         self.settings[key] = str(value)
 
-    def unset(self, key):
+    def unset(self, key: str):
         del self.settings[key]
 
     def overlay(self, reader: 'SimpleConfig'):

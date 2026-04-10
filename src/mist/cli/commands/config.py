@@ -11,9 +11,13 @@ def _choose_cfg_write(mist: Mist, kind: str) -> SimpleConfig:
     match kind:
         case "global":
             return mist.config.general
-        case "local" | _:
+        case "local":
             if not mist.is_repository():
                 raise MistError("--local can only be used inside a mist repository")
+            return mist.config.local
+        case _:
+            if not mist.is_repository():
+                raise MistError("not in a mist directory")
             return mist.config.local
 
 def _choose_cfg_read(mist: Mist, kind: str) -> SimpleConfig:
@@ -91,7 +95,12 @@ def build_parser_edit(subparsers, mist: Mist) -> argparse.ArgumentParser:
     _augment_with_types(parser)
 
     def func(args):
-        raise NotImplementedError
+        editor = mist.config.active.get("core.editor", None)
+        assert editor is not None
+        cfg = _choose_cfg_write(mist, args.kind)
+
+        import subprocess
+        subprocess.call([editor, cfg.path])
 
     parser.set_defaults(func=func, parser=parser)
     return parser

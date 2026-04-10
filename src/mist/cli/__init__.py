@@ -2,6 +2,7 @@ import argparse
 import configparser
 import os
 import sys
+import warnings
 
 from .. import Mist, _package_name
 from ..errors import MistError
@@ -95,7 +96,11 @@ def _internal_run():
 
 def run():
     try:
-        _internal_run()
+        with warnings.catch_warnings(record=True) as w:
+            _internal_run()
+
+            for wi in w:
+                log.warning(wi.message)
     except MistError as e:
         log.exception(e)
         log.error(str(e))

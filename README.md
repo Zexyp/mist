@@ -57,5 +57,13 @@ Colorful logging.
 #### `playsound` (https://pypi.org/project/playsound/)
 To inform about completion or failure.
 
+# Configuration
+- `core.editor`
+- `core.debug`
+- `core.color`
+- `core.version`
+
+**TODO:** use yaptex
+
 > [!CAUTION]
 > Undefined operation leads to undefined behavior.

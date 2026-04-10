@@ -1,4 +1,6 @@
 import argparse
+import warnings
+
 from ... import Mist
 
 def build_parser_add(subparsers, mist: Mist):
@@ -7,7 +9,7 @@ def build_parser_add(subparsers, mist: Mist):
     parser.add_argument("url", metavar="<url>")
 
     def func(args):
-        raise NotImplementedError
+        mist.remote_add(args.name, args.url)
 
     parser.set_defaults(func=func, parser=parser)
     return parser
@@ -19,7 +21,7 @@ def build_parser_rename(subparsers, mist: Mist):
     parser.add_argument("new", metavar="<new>")
 
     def func(args):
-        raise NotImplementedError
+        mist.remote_rename(args.old, args.new)
 
     parser.set_defaults(func=func, parser=parser)
     return parser
@@ -39,7 +41,7 @@ def build_parser_get_url(subparsers, mist: Mist):
     parser.add_argument("name", metavar="<name>")
 
     def func(args):
-        raise NotImplementedError
+        mist.remote_remove(args.name)
 
     parser.set_defaults(func=func, parser=parser)
     return parser
@@ -50,7 +52,7 @@ def build_parser_set_url(subparsers, mist: Mist):
     parser.add_argument("newurl", metavar="<newurl>")
 
     def func(args):
-        raise NotImplementedError
+        mist.remote_set_url(args.name, args.newurl)
 
     parser.set_defaults(func=func, parser=parser)
     return parser
@@ -60,7 +62,12 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
     parser.add_argument("-v", "--verbose", action="store_true")
 
     def func(args):
-        raise NotImplementedError
+        for name in mist.remotes_list():
+            line = name
+            if args.verbose:
+                line = f"{line:<7} {mist.config.active.get(f"remote.{name}.url", None)}"
+
+            print(line)
 
     parser.set_defaults(func=func, parser=parser)
 
