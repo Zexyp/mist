@@ -1,6 +1,7 @@
 class MistError(Exception):
     pass
 
+"""
 class RemoteError(MistError):
     pass
 
@@ -21,3 +22,4 @@ class RemoteNotFoundError(RemoteError):
 
 class RemoteExistsError(RemoteError):
     pass
+"""

@@ -1,226 +1,85 @@
-import json
 import os
-import concurrent.futures
+from . import files
+from .config import SimpleConfig, ConfigStack
+from .errors import MistError
+from . import log
+from . import config
 
-from . import shenanigans, metadata
-from .errors import *
-from .log import notify_target, log_error
-from .utils import url_strip_utm, url_strip_share_identifier, sanitize_filename, print_progress_bar, format_bytes
-from .core import *
-from .platform import run_concurrently
+_package_name = __package__
 
-def command_print_call(func):
-    """debug thingy"""
-    def wrapper(*args, **kwargs):
-        log_debug(f"command: {func.__name__}")
-        return func(*args, **kwargs)
-    return wrapper
+def _find_repository_dir(start: str, soft: bool = True) -> str | None:
+    """start should be abs"""
+    path = start
 
-### init
+    while path not in ["", "/"]:
+        candidate = os.path.join(path, files.DIR_REPOSITORY)
+        if os.path.isdir(candidate):
+            return candidate
+        path = os.path.dirname(path)
 
-@command_print_call
-def init():
-    if is_project():
-        raise InitializationError("already initialized")
+    if soft:
+        return None
 
-    project_config_template(project_config)
+    raise MistError(f"not a mist repository (or any of the parent directories): {files.DIR_REPOSITORY}")
 
-    save_project_config()
+class Mist:
+    def __init__(self):
+        self.working_dir: str = None
+        self.repository_dir: str = None
+        self.config: ConfigStack = ConfigStack()
 
-### clone
+    def set_working_dir(self, working_dir):
+        assert os.path.isdir(working_dir)
 
-@command_print_call
-def clone(url, output=None, origin=None):
-    dirname = output
-    if output is None:
-        dirname = sanitize_filename(shenanigans.get_remote_title(url))
+        self.working_dir = working_dir
+        self.config.load()
 
-    assert not os.path.exists(dirname), "path exists"
+        if found_repository := _find_repository_dir(working_dir):
+            log.debug(f"found repository dir '{found_repository}'")
+            self.set_repository_dir(found_repository)
 
-    os.makedirs(dirname)
-    prev_dir = os.getcwd()
-    os.chdir(dirname)
+        log.debug(f"working dir '{self.working_dir}'")
 
-    init()
-    remote_name = origin or DEFAULT_ORIGIN_NAME
-    remote_add(remote_name, url)
-    checkout(remote_name)
+    def set_repository_dir(self, repository_dir):
+        assert os.path.isdir(repository_dir)
 
-    # begin download
-    pull()
+        self.repository_dir = repository_dir
+        if not self.is_repository():
+            raise MistError(f"not a mist repository (or any of the parent directories): .mist")
 
-    os.chdir(prev_dir)
+        # only set if in repo
+        self.config.file_set(
+            repository_dir=self.repository_dir,
+            working_dir=self.working_dir,
+        )
+        self.config.load()
 
-### remote
+        log.debug(f"repository dir '{self.repository_dir}'")
 
-from .commands.remote import *
+    def is_repository(self):
+        return self.repository_dir is not None and os.path.isdir(self.repository_dir) and os.path.basename(self.repository_dir) == files.DIR_REPOSITORY
 
-### fetch
+    def init(self, directory: str) -> str:
+        target_dir = os.path.join(os.path.abspath(directory), files.DIR_REPOSITORY)
+        os.makedirs(target_dir)
+        self.repository_dir = target_dir
 
-from .commands.fetch import *
+        self.config.file_set(repository_dir=self.repository_dir)
 
-### merge
+        # write cfg
+        from importlib.metadata import version
+        self.config.local.set("core.version", version(_package_name))
+        self.config.local.save()
 
-@command_print_call
-def merge(remote):
-    load_project_config()
+        return target_dir
 
-    directory = "."
-    local_ids = set(metadata.local.get_entries(directory))
-    remote_ids = set(core.remote.get_entries(remote))
-    error_ids = set(core.remote.get_errors(remote) or [])
-    if error_ids:
-        log_verbose("errors will be skipped")
-
-    entries = remote_ids - local_ids - error_ids
-    if len(entries) == 0:
-        print("up to date")
-        return
-
-    remote_data = core.remote.ensure(remote)
-    pltf = metadata.detect_platform(remote_data["url"])
-
-    metadata_cache_file = core.remote.get_cache_path(remote)
-    metadata.load_cache(metadata_cache_file)
-
-    entries_length = len(entries)
-    i = 0
-    failed = []
-
-    def progress_hook(d):
-        nonlocal i
-
-        match d["status"]:
-            case "downloading":
-                downloaded = d["downloaded_bytes"]
-                total = d.get("total_bytes", 0)
-                percent = downloaded / total * 100 if total else 0
-                speed = d["speed"]
-                eta = d["eta"]
-                msg = f"{format_bytes(total)} at {format_bytes(speed)}/s"
-                print_progress_bar(i + percent / 100, entries_length, prefix=f"Downloading {d['id']} ({d['title']}) [{msg}]", finish=False)
-            case "finished":
-                i += 1
-                print_progress_bar(i, entries_length, prefix=f"Finished {d['id']} ({d['title']})", finish=False)
-            case _:
-                assert False, "unknown status"
-
-    def handle_entry(entry):
-        try:
-            shenanigans.process_entry(pltf, entry, output_directory=directory,
-                                      progress_hook=progress_hook)
-        except shenanigans.ShenanigansError as e:
-            failed.append(entry)
-            log_error(repr(e))
-
-    print_progress_bar(0, entries_length, prefix="Preparing...")
-
-    try:
-        run_concurrently(handle_entry, entries)
-    except KeyboardInterrupt:
-        print("stopped")
-    else:
-        notify_target()
-        print_progress_bar(i, entries_length, prefix="Done", finish=True)
-
-    metadata.save_cache(metadata_cache_file)
-
-    if len(failed) > 0:
-        error_cache_file = core.remote.get_cache_path(remote, CACHE_TYPE_ERRORS)
-        os.makedirs(os.path.dirname(error_cache_file), exist_ok=True)
-        with open(error_cache_file, "w") as file:
-            for item in {*failed, *error_ids}:
-                file.write(f"{item}\n")
-        log_verbose("new errors recorded")
-
-### pull
-
-@command_print_call
-def pull(remote=None, set_upstream=False):
-    load_project_config()
-
-    if set_upstream:
-        checkout(remote)
-
-    if remote is None:
-        remote = core.remote.get_current()
-
-    fetch(remote=remote)
-    merge(remote=remote)
-
-### status
-
-from .commands.status import *
-
-### checkout
-
-@command_print_call
-def checkout(remote):
-    load_project_config()
-
-    core.remote.ensure(remote)
-    core.remote.set_current(remote)
-
-### list
-
-@command_print_call
-def list_entries(remote=None, verbose=False):
-    metadata_cache_dir = None
-    directory = "."
-    if remote:
-        load_project_config()
-        remote_url = core.remote.ensure(remote)["url"]
-
-        listidlo = core.remote.get_entries(remote)
-        title_getter = lambda x: metadata.get_full_title(metadata.detect_platform(remote_url), x)
-
-        metadata_cache_dir = core.remote.get_cache_path(remote)
-    else:
-        listidlo = metadata.local.get_entries(directory)
-        title_getter = lambda x: metadata.local.get_entry_title(directory, x)
-
-    if verbose:
-        if metadata_cache_dir:
-            metadata.load_cache(metadata_cache_dir)
-
-        def append_title(i):
-            listidlo[i] = f"{listidlo[i]}  {title_getter(listidlo[i])}"
-
-        try:
-            run_concurrently(append_title, range(len(listidlo)))
-        except KeyboardInterrupt:
-            print("stopped")
-
-        if metadata_cache_dir:
-            metadata.save_cache(metadata_cache_dir)
-
-    print("\n".join(listidlo))
-
-### config
-
-from .commands.config import *
-
-### tag
-
-def tag():
-    load_project_config()
-
-    directory = "."
-    remote_name = core.remote.get_current()
-    metadata_cache_dir = core.remote.get_cache_path(remote_name)
-    if not os.path.isfile(core.remote.get_cache_path(remote_name, CACHE_TYPE_METADATA)):
-        raise NoDataFileError("mby fetch *tags* first")
-
-    entries = metadata.local.get_entries(directory)
-    remote_entries = core.remote.get_entries(remote_name)
-    entries = [x for x in entries if x in remote_entries]
-
-    metadata.load_cache(metadata_cache_dir)
-    pltf = metadata.detect_platform(core.remote.ensure(remote_name)["url"])
-
-    for i in range(len(entries)):
-        entries[i] = f"{entries[i]}  {metadata.get_tags(pltf, entries[i])}"
-
-    metadata.save_cache(metadata_cache_dir)
-
-    print("\n".join(entries))
+    def remote_add(self):
+        raise NotImplementedError
+    def remote_remove(self):
+        raise NotImplementedError
+    def remote_rename(self):
+        raise NotImplementedError
+    def remote_get_url(self):
+        raise NotImplementedError
+    def remote_set_url(self):
+        raise NotImplementedError
