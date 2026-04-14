@@ -4,27 +4,31 @@ from unittest import case
 
 import mist
 from ... import Mist, MistError
-from ...config import SimpleConfig
+from ...config import ConfigReader
+from ...messages import *
 
+# TODO: add system level
+# TODO: rename-section, remove-section
+# TODO: --append, --comment, --all, --system, -f --file, --type, -z --null, --name-only, --show-origin, --show-scope, --[no-]includes, --default <value>
 
-def _choose_cfg_write(mist: Mist, kind: str) -> SimpleConfig:
+def _choose_cfg_write(mist: Mist, kind: str) -> ConfigReader:
     match kind:
         case "global":
             return mist.config.general
         case "local":
             if not mist.is_repository():
-                raise MistError("--local can only be used inside a mist repository")
+                raise MistError(MSG_LOCAL_NO_REPOSITORY)
             return mist.config.local
         case _:
             if not mist.is_repository():
-                raise MistError("not in a mist directory")
+                raise MistError(MSG_NO_CONFIG_TO_WRITE)
             return mist.config.local
 
-def _choose_cfg_read(mist: Mist, kind: str) -> SimpleConfig:
+def _choose_cfg_read(mist: Mist, kind: str) -> ConfigReader:
     match kind:
         case "local":
             if not mist.is_repository():
-                raise MistError("--local can only be used inside a mist repository")
+                raise MistError(MSG_LOCAL_NO_REPOSITORY)
             return mist.config.local
         case "global":
             return mist.config.general
@@ -36,6 +40,8 @@ def _augment_with_types(parser):
     group.add_argument("--global", dest="kind", action="store_const", const="global")
     #group.add_argument("--system", dest="kind", action="store_const", const="system")
     #group.add_argument("--worktree", dest="kind", action="store_const", const="worktree")
+
+#def _augment_for_read(parser):
 
 def build_parser_list(subparsers, mist: Mist) -> argparse.ArgumentParser:
     parser = subparsers.add_parser("list")

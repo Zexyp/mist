@@ -1,16 +1,20 @@
 import os
 from . import files
-from .config import SimpleConfig, ConfigStack
+from .config import ConfigReader, ConfigStack
 from .errors import MistError
 from . import log
 from . import config
+from .messages import *
+from . import shenanigans
+
+# mist - another stupid content tracker
 
 _package_name = __package__
 
 def _find_repository_dir(start: str, soft: bool = True) -> str | None:
-    """start should be abs"""
-    path = start
+    assert os.path.isabs(start)
 
+    path = start
     while path not in ["", "/"]:
         candidate = os.path.join(path, files.DIR_REPOSITORY)
         if os.path.isdir(candidate):
@@ -20,7 +24,7 @@ def _find_repository_dir(start: str, soft: bool = True) -> str | None:
     if soft:
         return None
 
-    raise MistError(f"not a mist repository (or any of the parent directories): {files.DIR_REPOSITORY}")
+    raise MistError(MSG_NOT_A_REPOSITORY)
 
 class Mist:
     def __init__(self):
@@ -44,8 +48,7 @@ class Mist:
         assert os.path.isdir(repository_dir)
 
         self.repository_dir = repository_dir
-        if not self.is_repository():
-            raise MistError(f"not a mist repository (or any of the parent directories): .mist")
+        self._assert_repository()
 
         # only set if in repo
         self.config.file_set(
@@ -60,6 +63,9 @@ class Mist:
         return self.repository_dir is not None and os.path.isdir(self.repository_dir) and os.path.basename(self.repository_dir) == files.DIR_REPOSITORY
 
     def init(self, directory: str) -> str:
+        if self.is_repository():
+            raise NotImplementedError
+
         target_dir = os.path.join(os.path.abspath(directory), files.DIR_REPOSITORY)
         os.makedirs(target_dir)
         self.repository_dir = target_dir
@@ -73,11 +79,43 @@ class Mist:
 
         return target_dir
 
-    # now operates on local config
+    def _get_cache_file(self, remote_name: str, cache_type: str) -> str:
+        result = os.path.join(self.repository_dir, files.DIR_REPOSITORY_CACHE, remote_name, cache_type)
+        os.makedirs(os.path.dirname(result), exist_ok=True)
+        return result
+
+    def fetch(self, remote: str, tags: bool = False, progress: Callable[[str], None] = None):
+        self._assert_remote(remote)
+
+        section_name = self._remote_section_name(remote)
+
+        if tags:
+            raise NotImplementedError
+
+        items = shenanigans.get_item_ids(self.config.local.get(f"{section_name}.url"), progress=progress)
+
+        with open(self._get_cache_file(remote, files.CACHE_TYPE_ITEMS), mode="w") as f:
+            for i in items:
+                f.write(f"{i}\n")
+
+    def clone(self, url: str, destination_dir: str = None, origin: str = None):
+        raise NotImplementedError
+
+    @staticmethod
+    def _remote_section_name(mame: str) -> str:
+        return f"remote.{mame}"
+
+    def _assert_repository(self):
+        if not self.is_repository():
+            raise MistError(MSG_NOT_A_REPOSITORY)
+
+    # now operates on local config only, which make sense ig
     def _assert_remote(self, name: str):
-        section_name = f"remote.{name}"
-        if not self.config.local.has(f"{section_name}.url"):
-            raise MistError(f"No such remote '{name}'")
+        self._assert_repository()
+
+        section_name = self._remote_section_name(name)
+        if not self.config.local.has(f"{section_name}.", sub=True):
+            raise MistError(MSG_NO_SUCH_REMOTE.format(name=name))
 
     def remotes_list(self) -> list[str]:
         ls = set()
@@ -88,10 +126,10 @@ class Mist:
         return list(ls)
 
     def remote_add(self, name: str, url: str):
-        section_name = f"remote.{name}"
+        section_name = self._remote_section_name(name)
 
-        if self.config.local.has(f"{section_name}.url"):
-            raise MistError(f"remote {name} already exists.")
+        if self.config.local.has(f"{section_name}.", sub=True):
+            raise MistError(MSG_REMOTE_ALREADY_EXISTS.format(name=name))
 
         self.config.local.set(f"{section_name}.url", url)
         self.config.local.save()
@@ -99,7 +137,10 @@ class Mist:
     def remote_remove(self, name: str):
         self._assert_remote(name)
 
-        raise NotImplementedError
+        section_name = self._remote_section_name(name)
+
+        self.config.local.unset(f"{section_name}.", sub=True)
+        self.config.local.save()
 
     def remote_rename(self, old_name: str, new_name: str):
         self._assert_remote(old_name)
@@ -109,14 +150,34 @@ class Mist:
     def remote_get_url(self, name: str) -> str:
         self._assert_remote(name)
 
-        section_name = f"remote.{name}"
+        section_name = self._remote_section_name(name)
 
         return self.config.local.get(f"{section_name}.url")
 
     def remote_set_url(self, name: str, new_url: str):
         self._assert_remote(name)
 
-        section_name = f"remote.{name}"
+        section_name = self._remote_section_name(name)
 
         self.config.local.set(f"{section_name}.url", new_url)
         self.config.local.save()
+
+    def _get_active_remote_storage_file(self) -> str:
+        self._assert_repository()
+
+        return os.path.join(self.repository_dir, files.FILE_REPOSITORY_REMOTE)
+
+    def active_remote_get(self) -> str:
+        self._assert_repository()
+
+        with open(self._get_active_remote_storage_file(), mode="r") as f:
+            return f.readline().strip()
+
+    def active_remote_set(self, name: str):
+        self._assert_remote(name)
+
+        with open(self._get_active_remote_storage_file(), mode="w") as f:
+            f.write(f"{name}\n")
+
+#class Remote:
+#    raise NotImplementedError

@@ -2,6 +2,7 @@ import argparse
 import warnings
 
 from ... import Mist
+from .. import utils
 
 def build_parser_add(subparsers, mist: Mist):
     parser = subparsers.add_parser("add")
@@ -31,7 +32,7 @@ def build_parser_remove(subparsers, mist: Mist):
     parser.add_argument("name", metavar="<name>")
 
     def func(args):
-        raise NotImplementedError
+        mist.remote_remove(args.name)
 
     parser.set_defaults(func=func, parser=parser)
     return parser
@@ -41,7 +42,7 @@ def build_parser_get_url(subparsers, mist: Mist):
     parser.add_argument("name", metavar="<name>")
 
     def func(args):
-        mist.remote_remove(args.name)
+        print(mist.remote_get_url(args.name))
 
     parser.set_defaults(func=func, parser=parser)
     return parser
@@ -64,8 +65,9 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
     def func(args):
         for name in mist.remotes_list():
             line = name
+            # FIXME: verbosity
             if args.verbose:
-                line = f"{line:<7} {mist.config.active.get(f"remote.{name}.url", None)}"
+                line = f"{utils.pad_align(f"{line} ")}{mist.config.active.get(f"remote.{name}.url", None)}"
 
             print(line)
 

@@ -3,6 +3,7 @@ import os
 
 from ... import Mist, MistError
 
+# TODO: -q --quiet
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
     parser = subparsers.add_parser("init")

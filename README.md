@@ -10,8 +10,6 @@ Mist typically is quicker to dissipate and can rapidly disappear with even sligh
 ---
 
 ## Usage
-Have you heard of git?
-
 Would you mind if I use YapTeX for docs? :3
 
 ## Installation
@@ -54,14 +52,22 @@ pip install -r optional-requirements.txt
 #### `colorama` (https://pypi.org/project/colorama/)
 Colorful logging.
 
-#### `playsound` (https://pypi.org/project/playsound/)
-To inform about completion or failure.
-
-# Configuration
+## Configuration
 - `core.editor`
 - `core.debug`
 - `core.color`
 - `core.version`
+
+
+- `remote.<name>.url`
+- `remote.<name>.skipFetchAll`
+
+- `clone.defaultRemoteName`
+
+### TODO:
+- `remote.<name>.start`
+- `remote.<name>.end`
+- `remote.<name>.items`
 
 **TODO:** use yaptex
 

@@ -4,19 +4,22 @@ import os
 import sys
 import warnings
 
+from .commands import merge
 from .. import Mist, _package_name
 from ..errors import MistError
 from .. import log
 from .. import config
+from ..messages import *
 
-LOG_VERBOSE = False
-LOG_DEBUG = False
+# TODO: pad to multiples
 
 def _parse_configuration_param(arg: str) -> tuple[str, str]:
     SPLIT_BY = "="
     assert SPLIT_BY in arg
     parts = arg.split(SPLIT_BY, 1)
     return parts[0], parts[1]
+
+# TODO: --config-env=<name>=<envvar>, docs paths, -p --paginate, -P --no-pager, --work-tree=<path>, --no-lazy-fetch, --no-advice,
 
 def build_parser(mist: Mist) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
@@ -29,21 +32,19 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(metavar="<command>", dest="command")
 
-    from .commands import init, remote, fetch, status, clone, pull, config#, checkout, merge, diff, submodule, tag, rm, restore
+    from .commands import help as cmd_help
+    from .commands import init, config, remote, fetch, merge, clone#, checkout, pull, status, diff, submodule, tag, rm, restore, commit
+    cmd_help.build_parser(subparsers, mist)
     init.build_parser(subparsers, mist)
     config.build_parser(subparsers, mist)
     remote.build_parser(subparsers, mist)
     fetch.build_parser(subparsers, mist)
+    merge.build_parser(subparsers, mist)
     clone.build_parser(subparsers, mist)
-    pull.build_parser(subparsers, mist)
-    status.build_parser(subparsers, mist)
 
     #parser_checkout = subparsers.add_parser("checkout")
     #parser_checkout.add_argument("remote")
     #parser_checkout.set_defaults(func=lambda args: checkout(remote=args.remote))
-    #parser_merge = subparsers.add_parser("merge")
-    #parser_merge.add_argument("remote")
-    #parser_merge.set_defaults(func=lambda args: merge(remote=args.remote))
     ## parser_diff = subparsers.add_parser("diff")
     ## parser_submodule = subparsers.add_parser("submodule")
     #parser_tag = subparsers.add_parser("tag")
@@ -68,7 +69,7 @@ def _internal_run():
     previous_dir = None
     if args.C:
         if not os.path.isdir(args.C):
-            raise MistError(f"cannot change to '{args.C}': No such directory")
+            raise MistError(MSG_CD_NO_SUCH_DIR.format(directory=args.C))
         previous_dir = os.getcwd()
         os.chdir(args.C)
 
@@ -96,11 +97,8 @@ def _internal_run():
 
 def run():
     try:
-        with warnings.catch_warnings(record=True) as w:
+        with warnings.catch_warnings(record=True) as recorded_warnings:
             _internal_run()
-
-            for wi in w:
-                log.warning(wi.message)
     except MistError as e:
         log.exception(e)
         log.error(str(e))
@@ -115,3 +113,6 @@ def run():
         log.fatal(f"{type(e).__name__}: {str(e)}")
         log.fatal("unrecoverable error")
         sys.exit(1)
+    finally:
+        for w in recorded_warnings:
+            log.warning(w.message)

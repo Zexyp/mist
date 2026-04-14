@@ -59,7 +59,7 @@ def exception(exc):
     for line in traceback.format_exception(exc):
         debug(line.rstrip())
 
-def configure(cfg: 'SimpleConfig'):
+def configure(cfg):
     global DEBUG
     DEBUG = cfg.getbool("core.debug", False)
     match cfg.get("core.color", "auto"):
