@@ -59,7 +59,7 @@ def build_parser_set_url(subparsers, mist: Mist):
     return parser
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("remote")
+    parser = subparsers.add_parser("remote", description="Manage set of tracked repositories")
     parser.add_argument("-v", "--verbose", action="store_true")
 
     def func(args):

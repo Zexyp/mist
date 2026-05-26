@@ -4,7 +4,7 @@ from ... import Mist
 # TODO: -q --quiet, -v --verbose, --progress, --server-option, -n --no-checkout, -c --config <key>=<value>, --no-tags, --recurse-submodules?, -j --jobs
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("clone")
+    parser = subparsers.add_parser("clone", description="Clone a repository into a new directory")
     parser.add_argument("url", metavar="<url>")
     parser.add_argument("dir", metavar="<dir>", nargs='?')
     parser.add_argument("-o", "--origin", metavar="<name>")

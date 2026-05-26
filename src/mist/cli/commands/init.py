@@ -6,7 +6,7 @@ from ... import Mist, MistError
 # TODO: -q --quiet
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("init")
+    parser = subparsers.add_parser("init", description="Create an empty Mist repository")
 
     def func(args):
         target = mist.init(args.directory or os.getcwd())

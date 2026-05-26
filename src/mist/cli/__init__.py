@@ -21,26 +21,54 @@ def _parse_configuration_param(arg: str) -> tuple[str, str]:
 
 # TODO: --config-env=<name>=<envvar>, docs paths, -p --paginate, -P --no-pager, --work-tree=<path>, --no-lazy-fetch, --no-advice,
 
-def build_parser(mist: Mist) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
+class HelpAction(argparse.Action):
+    def __init__(self, option_strings, dest, commands=None, **kwargs):
+        self.commands = commands
+        super().__init__(option_strings, dest, **kwargs)
 
-    from importlib.metadata import version
-    parser.add_argument("-v", "--version", action="version", version=f"Mist {_package_name}")
-    parser.add_argument("-C", metavar="<path>")
-    parser.add_argument("-c", metavar="<name>=<value>", action="append", type=_parse_configuration_param)
-    parser.add_argument("--mist-dir", metavar="<path>", default=None)
+    def __call__(self, parser, namespace, values, option_string=None):
+        if option_string == "-h":
+            parser.print_usage()
+            parser.exit()
+        if option_string == "--help":
+            parser.print_help()
+            print("commands:")
+            for name, subparser in self.commands.items():
+                print(f"  {name:16}", end="")
+                if subparser.description:
+                    print(f" {subparser.description}", end="")
+                print()
+
+            parser.exit()
+
+        # default to error
+        parser.print_usage()
+        parser.exit(1)
+
+def build_parser(mist: Mist) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(add_help=False, description="another stupid content tracker")
 
     subparsers = parser.add_subparsers(metavar="<command>", dest="command")
 
     from .commands import help as cmd_help
-    from .commands import init, config, remote, fetch, merge, clone#, checkout, pull, status, diff, submodule, tag, rm, restore, commit
-    cmd_help.build_parser(subparsers, mist)
-    init.build_parser(subparsers, mist)
-    config.build_parser(subparsers, mist)
-    remote.build_parser(subparsers, mist)
-    fetch.build_parser(subparsers, mist)
-    merge.build_parser(subparsers, mist)
-    clone.build_parser(subparsers, mist)
+    from .commands import init, config, remote, fetch, merge, clone  # , checkout, pull, status, diff, submodule, tag, rm, restore, commit
+    command_parsers = {
+        "help": cmd_help.build_parser(subparsers, mist),
+        "init": init.build_parser(subparsers, mist),
+        "config": config.build_parser(subparsers, mist),
+        "remote": remote.build_parser(subparsers, mist),
+        "fetch": fetch.build_parser(subparsers, mist),
+        "merge": merge.build_parser(subparsers, mist),
+        "clone": clone.build_parser(subparsers, mist),
+    }
+
+    from importlib.metadata import version
+    parser.add_argument("-v", "--version", action="version", version=f"Mist {_package_name}")
+    parser.add_argument("-h", action=HelpAction, nargs=0, help="short help", commands=command_parsers)
+    parser.add_argument("--help", action=HelpAction, nargs=0, help="extensive help", commands=command_parsers)
+    parser.add_argument("-C", metavar="<path>")
+    parser.add_argument("-c", metavar="<name>=<value>", action="append", type=_parse_configuration_param)
+    parser.add_argument("--mist-dir", metavar="<path>", default=None)
 
     #parser_checkout = subparsers.add_parser("checkout")
     #parser_checkout.add_argument("remote")
@@ -58,6 +86,7 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
     #parser_list.add_argument("--verbose", action="store_true", dest="list_verbose")
     #parser_list.set_defaults(func=lambda args: list_entries(args.remote, verbose=args.list_verbose))
 
+    parser.set_defaults(parser=parser)
     return parser
 
 def _internal_run():
@@ -87,10 +116,10 @@ def _internal_run():
         args.func(args)
     else:
         if hasattr(args, "parser"):
-            args.parser.print_help()
+            args.parser.print_usage()
         else:
-            parser.print_help()
-        exit(1)
+            parser.print_usage()
+        parser.exit(1)
 
     if previous_dir:
         os.chdir(previous_dir)

@@ -4,8 +4,8 @@ from ... import Mist
 # TODO: -a --all, --[no-]aliases, -c
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("help")
-    parser.add_argument("command", metavar="<command>", nargs="?")
+    parser = subparsers.add_parser("help", add_help=False)
+    parser.add_argument("topic", nargs="?")
 
     def func(args):
         raise NotImplementedError

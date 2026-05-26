@@ -80,3 +80,6 @@ def get_item_ids(url: str, progress: Callable[[str], None] = None) -> list[str]:
         print(e)
 
     return [entry["id"] for entry in info["entries"]]
+
+def get_item(url: str, progress: Callable) -> str:
+    raise NotImplementedError

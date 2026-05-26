@@ -63,7 +63,7 @@ def build_parser_get(subparsers, mist: Mist) -> argparse.ArgumentParser:
     def func(args):
         cfg = _choose_cfg_read(mist, args.kind)
         if cfg is None or args.name not in cfg.settings:
-            exit(1)
+            parser.exit(1)
         print(cfg.settings[args.name])
 
     parser.set_defaults(func=func, parser=parser)
@@ -112,7 +112,7 @@ def build_parser_edit(subparsers, mist: Mist) -> argparse.ArgumentParser:
     return parser
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("config")  # locations: global, system, local, worktree?
+    parser = subparsers.add_parser("config", description="Get and set repository or global options")  # locations: global, system, local, worktree?
     parser.set_defaults(parser=parser)
 
     subparsers_config = parser.add_subparsers()

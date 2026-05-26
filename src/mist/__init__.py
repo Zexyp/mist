@@ -6,6 +6,7 @@ from . import log
 from . import config
 from .messages import *
 from . import shenanigans
+from .utils import url_strip_utm, url_strip_share_identifier
 
 # mist - another stupid content tracker
 
@@ -25,6 +26,10 @@ def _find_repository_dir(start: str, soft: bool = True) -> str | None:
         return None
 
     raise MistError(MSG_NOT_A_REPOSITORY)
+
+def _sanitize_url(url: str) -> str:
+    url = url_strip_share_identifier(url)
+    url = url_strip_utm(url)
 
 class Mist:
     def __init__(self):
@@ -98,7 +103,11 @@ class Mist:
             for i in items:
                 f.write(f"{i}\n")
 
+    def merge(self, remote: str, progress: Callable[[str], None] = None):
+        raise NotImplementedError
+
     def clone(self, url: str, destination_dir: str = None, origin: str = None):
+        url = _sanitize_url(url)
         raise NotImplementedError
 
     @staticmethod
@@ -126,6 +135,8 @@ class Mist:
         return list(ls)
 
     def remote_add(self, name: str, url: str):
+        url = _sanitize_url(url)
+
         section_name = self._remote_section_name(name)
 
         if self.config.local.has(f"{section_name}.", sub=True):
@@ -144,6 +155,7 @@ class Mist:
 
     def remote_rename(self, old_name: str, new_name: str):
         self._assert_remote(old_name)
+        # TODO: assert new name
 
         raise NotImplementedError
 
@@ -156,6 +168,8 @@ class Mist:
 
     def remote_set_url(self, name: str, new_url: str):
         self._assert_remote(name)
+
+        new_url = _sanitize_url(new_url)
 
         section_name = self._remote_section_name(name)
 

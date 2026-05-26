@@ -12,7 +12,7 @@ def _report_progress(msg):
     print(f"\r{msg}", end="")
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("fetch")
+    parser = subparsers.add_parser("fetch", description="Download objects from another repository")
     parser.add_argument("remote", metavar="<remote>", nargs='*')
     parser.add_argument("--tags", action="store_true")
     parser.add_argument("--set-upstream", action="store_true")
