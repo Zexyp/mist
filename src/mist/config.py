@@ -174,14 +174,15 @@ def _translate_environment() -> dict[str, str]:
     mapping = [
         # repository
         "MIST_DIR",
+        # external tools
+        "MIST_PAGER",
+        "MIST_EDITOR",
         # diff
         "MIST_EXTERNAL_DIFF",
         "MIST_EXTERNAL_DIFF_TRUST_EXIT_CODE",
         # other
         "MIST_MERGE_VERBOSITY",
-        "MIST_PAGER",
         "MIST_PROGRESS_DELAY",
-        "MIST_EDITOR",
         "MIST_SSL_NO_VERIFY",
         "MIST_ASKPASS",
         "MIST_CONFIG_GLOBAL", "MIST_CONFIG_SYSTEM",

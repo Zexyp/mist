@@ -64,8 +64,9 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
 
     from importlib.metadata import version
     parser.add_argument("-v", "--version", action="version", version=f"Mist {_package_name}")
-    parser.add_argument("-h", action=HelpAction, nargs=0, help="short help", commands=command_parsers)
-    parser.add_argument("--help", action=HelpAction, nargs=0, help="extensive help", commands=command_parsers)
+    help_group = parser.add_mutually_exclusive_group(required=False)
+    help_group.add_argument("-h", action=HelpAction, nargs=0, help="short help", commands=command_parsers)
+    help_group.add_argument("--help", action=HelpAction, nargs=0, help="extensive help", commands=command_parsers)
     parser.add_argument("-C", metavar="<path>")
     parser.add_argument("-c", metavar="<name>=<value>", action="append", type=_parse_configuration_param)
     parser.add_argument("--mist-dir", metavar="<path>", default=None)

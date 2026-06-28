@@ -7,17 +7,19 @@ COL_RESET  = ""
 COL_RED    = ""
 COL_YELLOW = ""
 COL_DIM    = ""
+COL_CYAN   = ""
 
 SOUND_BASE_PATH = os.path.join(os.path.dirname(__file__), "res", "sounds")
 
 DEBUG: bool = False
 
 def deinit_colors():
-    global COL_RESET, COL_YELLOW, COL_DIM, COL_RED
+    global COL_RESET, COL_YELLOW, COL_DIM, COL_RED, COL_CYAN
 
     COL_RESET  = ""
     COL_RED    = ""
     COL_YELLOW = ""
+    COL_CYAN   = ""
     COL_DIM    = ""
 
     if not colorama:
@@ -33,12 +35,13 @@ def init_colors():
 
     colorama.init()
 
-    global COL_RESET, COL_YELLOW, COL_DIM, COL_RED
+    global COL_RESET, COL_YELLOW, COL_DIM, COL_RED, COL_CYAN
 
     COL_RESET = colorama.Style.RESET_ALL
     COL_RED = colorama.Fore.RED
     COL_YELLOW = colorama.Fore.YELLOW
     COL_DIM = colorama.Style.DIM
+    COL_CYAN = colorama.Fore.CYAN
 
     debug("colors initialized")
 
@@ -80,3 +83,33 @@ except ImportError as e:
     colorama = None
     exception(e)
     warning("color module import error (colorama)")
+
+class CustomHandler(logging.Handler):
+    def emit(self, record):
+        message = self.format(record)
+        match record.levelno:
+            case _ if record.levelno <= logging.DEBUG:
+                debug(message)
+            case _ if record.levelno <= logging.INFO:
+                print(message)
+            case _ if record.levelno <= logging.WARNING:
+                warning(message)
+            case _ if record.levelno <= logging.ERROR:
+                error(message)
+            case _:
+                fatal(message)
+
+        #self.stream.write(message)
+        #self.stream.flush()
+
+_handler = CustomHandler()
+_handler.setFormatter(logging.Formatter(
+    fmt="[%(asctime)s][%(name)s][%(levelname)s]: %(message)s",
+    datefmt="%Y.%m.%d-%H:%M:%S"
+))
+
+def spawn_logger(name: str) -> logging.Logger:
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG if DEBUG else logging.WARNING)
+    logger.addHandler(_handler)
+    return logger
