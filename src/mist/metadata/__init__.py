@@ -30,6 +30,9 @@ class Track:
 
 log = spawn_logger(__name__)
 
+class NotSupported(Exception):
+    pass
+
 class Source(Enum):
     LOCAL = auto()
     YOUTUBE = auto()
@@ -179,6 +182,8 @@ def enrich(data: Data, track: Track, item,  using_connector: MetadataConnector) 
     def try_enrich(lmbd: Callable[[], Any]):
         try:
             return lmbd()
+        except NotSupported:
+            pass
         except Exception as e:
             log.error(f"{str(inspect.getsourcelines(lmbd)[0][0]).strip()}\n{type(e).__name__}: {e}")
             return None
@@ -213,6 +218,7 @@ def enrich(data: Data, track: Track, item,  using_connector: MetadataConnector) 
         else:
             track.tags = track_tags
 
+    track.artist = track.artist or artist
     track.artist_name = track.artist_name or artist_name
 
     return data
@@ -228,6 +234,8 @@ def obtain(source: Source, entry: str):
         source, item = queue.pop(0)
 
         visited.add(source)
+
+        log.debug(f"visiting {source.name}")
 
         connector = connectors.get_connector(source)
         data = enrich(data, track, item, connector)

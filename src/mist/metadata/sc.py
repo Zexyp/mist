@@ -7,7 +7,7 @@ from typing import Callable
 import requests
 from lxml import etree
 
-from . import MetadataConnector, Source, TArtist, TTrack
+from . import MetadataConnector, Source, TArtist, TTrack, NotSupported
 from .scrape_utils import extract_script_data, json_dict_of_key, assert_status_code, assert_single
 
 # todo: locale
@@ -144,7 +144,7 @@ class SoundCloudConnector(MetadataConnector[SoundCloudTrackId, SoundCloudUserId]
         return response_data["genre"]
 
     def get_artist(self, track: SoundCloudTrackId) -> SoundCloudUserId:
-        pass
+        raise NotSupported
 
     def get_artist_name(self, artist: SoundCloudUserId) -> str:
         response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=artist))

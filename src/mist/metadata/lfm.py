@@ -6,7 +6,7 @@ import microdata
 import requests
 from lxml import etree
 
-from . import MetadataConnector, Source
+from . import MetadataConnector, Source, NotSupported
 from .scrape_utils import assert_status_code, urlappend, assert_single
 from .. import log
 
@@ -79,7 +79,7 @@ class LastFmConnector(MetadataConnector[LastFmTrackUrl, LastFmArtistUrl]):
         assert_status_code(response)
 
         items = microdata.get_items(response.content)
-        recording = assert_single([i for i in items if repr(i.itemtype[0]) == "http://schema.org/MusicRecording"])
+        recording = [i for i in items if repr(i.itemtype[0]) == "http://schema.org/MusicRecording"][0]
         return recording.name
 
     def get_track_title(self, track: LastFmTrackUrl) -> str:
@@ -87,14 +87,14 @@ class LastFmConnector(MetadataConnector[LastFmTrackUrl, LastFmArtistUrl]):
         assert_status_code(response)
 
         items = microdata.get_items(response.content)
-        recording = assert_single([i for i in items if repr(i.itemtype[0]) == "http://schema.org/MusicRecording"])
+        recording = [i for i in items if repr(i.itemtype[0]) == "http://schema.org/MusicRecording"][0]
         return f"{recording.byArtist.name} - {recording.name}"
 
     def get_track_tags(self, track: LastFmTrackUrl) -> list[str]:
         return _extract_tags(track)
 
     def get_track_genre(self, track: LastFmTrackUrl) -> str:
-        raise NotImplementedError
+        raise NotSupported
 
     def get_artist(self, track: LastFmTrackUrl) -> LastFmArtistUrl:
         response = requests.get(track)
