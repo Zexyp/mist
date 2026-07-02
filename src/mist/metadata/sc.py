@@ -7,8 +7,8 @@ from typing import Callable
 import requests
 from lxml import etree
 
-from . import MetadataConnector
-from .scrape_utils import extract_script_data, json_dict_of_key, assert_status_code
+from . import MetadataConnector, Source, TArtist, TTrack
+from .scrape_utils import extract_script_data, json_dict_of_key, assert_status_code, assert_single
 
 # todo: locale
 
@@ -29,9 +29,7 @@ URL_API_GET_SEARCH_TRACKS = URL_HOST_API2 + "/search/tracks?q={query}&limit={lim
 
 URL_GET_USER_ID = URL_HOST + "/{canonical_id}"
 client_id_resources = [
-    URL_HOST_CDN + "/assets/0-e749f414.js",
-    URL_HOST_CDN + "/assets/52-bb10f8b9.js",
-    URL_HOST_CDN + "/assets/51-c65d6649.js",
+    URL_HOST_CDN + "/assets/55-9d8411a8.js",
 ]
 URL_GET_CLIENT_ID = client_id_resources[0]
 
@@ -42,7 +40,7 @@ URL_GET_SEARCH_ALBUMS = URL_HOST + "/search/albums?q={query}"
 URL_GET_SEARCH_SETS = URL_HOST + "/search/sets?q={query}"
 
 @functools.lru_cache
-def _prepare_client_id():
+def _prepare_client_id_old():
     response = requests.get(URL_GET_CLIENT_ID)
     assert_status_code(response)
 
@@ -57,6 +55,17 @@ def _prepare_client_id():
     assert all(x == ids[0] for x in ids)
 
     return ids[0]
+
+@functools.lru_cache
+def _prepare_client_id():
+    response = requests.get(URL_HOST)
+    assert_status_code(response)
+
+    tree = etree.HTML(response.content)
+    response_data = extract_script_data(tree, "window.__sc_hydration = ")
+
+    client_data = assert_single([i for i in response_data if i["hydratable"] == "apiClient"])["data"]
+    return client_data["id"]
 
 def _wrap_request_with_client_id(url):
     params = {
@@ -73,7 +82,7 @@ def _wrap_request_with_client_id(url):
 
     return response
 
-def _search_wrapper(url, query: str, limit: int | None, item_callback: Callable):
+def _search_wrapper(url, query: str, limit: int | None):
     if limit is None:
         response = _wrap_request_with_client_id(url.format(query=query, limit=0))
         response_data = response.json()
@@ -84,14 +93,15 @@ def _search_wrapper(url, query: str, limit: int | None, item_callback: Callable)
     response = _wrap_request_with_client_id(url.format(query=query, limit=limit))
     response_data = response.json()
 
-    for r in response_data["collection"]:
-        item_callback(r)
+    return response_data["collection"]
 
 def search_users(query: str, limit: int | None = None):
-    _search_wrapper(URL_API_GET_SEARCH_USERS, query, limit, lambda r: print(r["id"], r["username"], r["permalink"]))
+    # lambda r: print(r["id"], r["username"], r["permalink"])
+    return _search_wrapper(URL_API_GET_SEARCH_USERS, query, limit)
 
 def search_tracks(query: str, limit: int | None = None):
-    _search_wrapper(URL_API_GET_SEARCH_TRACKS, query, limit, lambda r: print(r["id"], r["title"], r["genre"], r["tag_list"]))
+    # lambda r: print(r["id"], r["title"], r["genre"], r["tag_list"])
+    return _search_wrapper(URL_API_GET_SEARCH_TRACKS, query, limit)
 
 
 def get_user_id(canonical_id: str) -> str:
@@ -99,45 +109,52 @@ def get_user_id(canonical_id: str) -> str:
     assert_status_code(response)
     tree = etree.HTML(response.content)
     response_data = extract_script_data(tree, "window.__sc_hydration = ")
-    return json_dict_of_key(response_data, "data")["id"]
-
-def get_links(user_id) -> dict[str, str]:
-    response = _wrap_request_with_client_id(URL_API_GET_USERS_PROFILES.format(user_id=user_id))
-    response_data = response.json()
-    return {profile["title"]: profile["url"] for profile in response_data}
-
-def get_tags(track_id):
-    response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=track_id))
-    response_data = response.json()
-    tag_list = response_data["tag_list"]
-    return tag_list.split(" ") if tag_list and not tag_list.isspace() else []
-
-def get_genre(track_id):
-    response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=track_id))
-    response_data = response.json()
-    return response_data["genre"]
-
-def get_title(track_id):
-    response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=track_id))
-    response_data = response.json()
-    return response_data["user"]["username"]
-
-def get_author(track_id):
-    response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=track_id))
-    response_data = response.json()
-    return response_data["title"]
-
-def get_full_title(track_id):
-    response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=track_id))
-    response_data = response.json()
-    label = response_data["title"]
-    author = response_data["user"]["username"]
-    if author not in label:
-        label = f"{author} - {label}"
-    return label
+    user_data = assert_single([i for i in response_data if i["hydratable"] == "user"])["data"]
+    return user_data["id"]
 
 SoundCloudTrackId = str
 SoundCloudUserId = str
 
 class SoundCloudConnector(MetadataConnector[SoundCloudTrackId, SoundCloudUserId]):
-    pass
+    source = Source.SOUNDCLOUD
+
+    def get_track_name(self, track: SoundCloudTrackId) -> str:
+        response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=track))
+        response_data = response.json()
+        return response_data["title"]
+
+    def get_track_title(self, track: SoundCloudTrackId) -> str:
+        response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=track))
+        response_data = response.json()
+        label = response_data["title"]
+        author = response_data["user"]["username"]
+        if author not in label:
+            label = f"{author} - {label}"
+        return label
+
+    def get_track_tags(self, track: SoundCloudTrackId) -> list[str]:
+        response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=track))
+        response_data = response.json()
+        tag_list = response_data["tag_list"]
+        return tag_list.split(" ") if tag_list and not tag_list.isspace() else []
+
+    def get_track_genre(self, track: SoundCloudTrackId) -> str:
+        response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=track))
+        response_data = response.json()
+        return response_data["genre"]
+
+    def get_artist(self, track: SoundCloudTrackId) -> SoundCloudUserId:
+        pass
+
+    def get_artist_name(self, artist: SoundCloudUserId) -> str:
+        response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=artist))
+        response_data = response.json()
+        return response_data["user"]["username"]
+
+    def get_artist_links(self, artist: SoundCloudUserId) -> dict[str, str]:
+        response = _wrap_request_with_client_id(URL_API_GET_USERS_PROFILES.format(user_id=artist))
+        response_data = response.json()
+        return {profile["title"]: profile["url"] for profile in response_data}
+
+    def get_artist_tags(self, artist: SoundCloudUserId) -> list[str]:
+        pass

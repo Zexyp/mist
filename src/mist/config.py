@@ -44,8 +44,12 @@ class ConfigReader:
         value = self.get(key, default)
         return int(value)
 
-    def getsub(self, key: str) -> dict:
+    def getsub(self, key: str) -> dict[str, str]:
         return {k.removeprefix(key): v for k, v in self.settings.items() if k.startswith(key)}
+
+    def iter(self, key: str):
+        """itareate over common key prefixes"""
+        raise NotImplementedError
 
     def set(self, key: str, value):
         match value:

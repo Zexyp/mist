@@ -1,11 +1,13 @@
 import json
+from pprint import pprint
 from urllib.parse import urljoin
 
+import microdata
 import requests
 from lxml import etree
-import yt_dlp
 
-from . import assert_status_code, urlappend, MetadataConnector
+from . import MetadataConnector, Source
+from .scrape_utils import assert_status_code, urlappend, assert_single
 from .. import log
 
 # https://schema.org/MusicGroup
@@ -24,34 +26,6 @@ URL_GET_SEARCH_TRACKS = URL_HOST + "/search/tracks"
 URL_TAGS_ENDPOINT = "+tags"
 
 logger = log.spawn_logger(__name__)
-
-def get_track_tags(lfm_track_url: str) -> list[str]:
-    pass
-
-def get_artist(lfm_track_url: str) -> str:
-    response = requests.get(lfm_track_url)
-    assert_status_code(response)
-
-    tree = etree.HTML(response.content)
-    return tree.xpath("//span[@interop='']/../ul/li/a/@href")
-
-def get_artist_links(lfm_artist_url: str) -> list[str]:
-    response = requests.get(lfm_artist_url)
-    assert_status_code(response)
-
-    tree = etree.HTML(response.content)
-    return tree.xpath("//h3[text()='External Links']/../ul/li/a/@href")
-
-def extract_tags(lfm_url: str) -> list[str]:
-    url = urlappend(lfm_url, URL_TAGS_ENDPOINT)
-
-    response = requests.get(url)
-    assert_status_code(response)
-
-    tree = etree.HTML(response.content)
-    tags = tree.xpath("//h3/a[starts-with(@href, '/tag/')]/text()")
-
-    return tags
 
 # get track
 def match_track(yt_ident: str, title: str) -> str | None:
@@ -81,10 +55,72 @@ def _extract_tags_basic(url) -> list[str]:
 
     return tags
 
+def _extract_tags(lfm_url) -> list[str]:
+    url = urlappend(lfm_url, URL_TAGS_ENDPOINT)
+
+    response = requests.get(url)
+    assert_status_code(response)
+
+    tree = etree.HTML(response.content)
+    tags = tree.xpath("//h3/a[starts-with(@href, '/tag/')]/text()")
+
+    return tags
+
 # ezyzee
 
 LastFmTrackUrl = str
 LastFmArtistUrl = str
 
 class LastFmConnector(MetadataConnector[LastFmTrackUrl, LastFmArtistUrl]):
-    pass
+    source = Source.LASTFM
+
+    def get_track_name(self, track: LastFmTrackUrl) -> str:
+        response = requests.get(track)
+        assert_status_code(response)
+
+        items = microdata.get_items(response.content)
+        recording = assert_single([i for i in items if repr(i.itemtype[0]) == "http://schema.org/MusicRecording"])
+        return recording.name
+
+    def get_track_title(self, track: LastFmTrackUrl) -> str:
+        response = requests.get(track)
+        assert_status_code(response)
+
+        items = microdata.get_items(response.content)
+        recording = assert_single([i for i in items if repr(i.itemtype[0]) == "http://schema.org/MusicRecording"])
+        return f"{recording.byArtist.name} - {recording.name}"
+
+    def get_track_tags(self, track: LastFmTrackUrl) -> list[str]:
+        return _extract_tags(track)
+
+    def get_track_genre(self, track: LastFmTrackUrl) -> str:
+        raise NotImplementedError
+
+    def get_artist(self, track: LastFmTrackUrl) -> LastFmArtistUrl:
+        response = requests.get(track)
+        assert_status_code(response)
+
+        items = microdata.get_items(response.content)
+        # microdata are ass, i really mean it
+        recording = [i for i in items if repr(i.itemtype[0]) == "http://schema.org/MusicRecording"][0]
+        return urljoin(URL_HOST, repr(recording.byArtist.url))
+
+    def get_artist_name(self, artist: LastFmArtistUrl) -> str:
+        response = requests.get(artist)
+        assert_status_code(response)
+
+        items = microdata.get_items(response.content)
+        # microdata are ass
+        group = [i for i in items if repr(i.itemtype[0]) == "http://schema.org/MusicGroup"][0]
+        return group.name
+
+    def get_artist_links(self, artist: LastFmArtistUrl) -> dict[str, str]:
+        response = requests.get(artist)
+        assert_status_code(response)
+
+        tree = etree.HTML(response.content)
+        links = tree.xpath("//h3[text()='External Links']/../ul/li/a")
+        return {l.text: l.attrib["href"] for l in links}
+
+    def get_artist_tags(self, artist: LastFmArtistUrl) -> list[str]:
+        return _extract_tags(artist)

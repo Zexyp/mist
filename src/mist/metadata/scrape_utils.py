@@ -1,4 +1,5 @@
 import json
+from pprint import pprint
 from typing import Any
 
 import requests
@@ -22,8 +23,8 @@ def json_path_set(root: dict, path: str, value):
     element[keys[-1]] = value
 
 # i have no fucking clue how to name this
-def json_dict_of_key(dictionary: list[dict], key) -> Any:
-    for d in dictionary:
+def json_dict_of_key(dictionaries: list[dict], key) -> Any:
+    for d in dictionaries:
         if key in d:
             return d[key]
     raise KeyError
@@ -36,3 +37,10 @@ def extract_script_data(tree, hook: str):
 
 def assert_status_code(response: requests.Response, code=200):
     assert response.status_code == code, f"status code anomaly ({response.status_code})"
+
+def urlappend(url: str, path: str) -> str:
+    return url.rstrip("/") + "/" + path
+
+def assert_single(value):
+    assert len(value) == 1, "not a single element"
+    return value[0]

@@ -5,7 +5,7 @@ from typing import Any
 import requests
 from lxml import etree
 
-from . import MetadataConnector
+from . import MetadataConnector, Source, TArtist, TTrack
 from .. import log
 from .scrape_utils import json_dict_of_key, json_path_get, extract_script_data, RateLimitHitError, assert_status_code
 
@@ -20,6 +20,10 @@ URL_GET_YOUTUBE_CHANNEL = URL_HOST_YOUTUBE + "/channel/{channel_id}"
 URL_POST_YOUTUBE_MUSIC_TITLE = URL_HOST_YOUTUBE_MUSIC + "/youtubei/v1/player"
 
 logger = log.spawn_logger(__name__)
+
+def _parse_link(link) -> tuple[str, str]:
+    vm = link["channelExternalLinkViewModel"]
+    return vm["title"]["content"], vm["link"]["content"]
 
 def _get_ytm_player_data(ident):
     json_data = {
@@ -55,89 +59,92 @@ def _get_yt_channel_data(channel_id):
     response_data = extract_script_data(tree, "var ytInitialData = ")
     return response_data
 
-def _parse_link(link) -> tuple[str, str]:
-    vm = link["channelExternalLinkViewModel"]
-    return vm["title"]["content"], vm["link"]["content"]
-
-def get_links(channel_id) -> dict[str, str]:
-    response_data = _get_yt_channel_data(channel_id)
-    section_list_renderer_content = json_path_get(response_data, "header/pageHeaderRenderer/content/pageHeaderViewModel/description/descriptionPreviewViewModel/rendererContext/commandContext/onTap/innertubeCommand/showEngagementPanelEndpoint/engagementPanel/engagementPanelSectionListRenderer/content/sectionListRenderer/contents")
-    item_section_renderer = json_dict_of_key(section_list_renderer_content, "itemSectionRenderer")
-    continuation_item_renderer = json_dict_of_key(item_section_renderer["contents"], "continuationItemRenderer")
-    token = json_path_get(continuation_item_renderer, "continuationEndpoint/continuationCommand/token")
-
-    json_data = {
-        "context": {
-            "client": {
-                "clientFormFactor": "UNKNOWN_FORM_FACTOR",
-                "clientName": "WEB",
-                "clientVersion": "2.20250828.01.00",
-                "gl": "CZ",
-                "hl": "en"
-            }
-        },
-        "continuation": token
-    }
-
-    try:
-        response = requests.post(URL_POST_YOUTUBE_LINKS, json=json_data)
-    except RemoteDisconnected:
-        logger.error("getting throttled")
-        raise RateLimitHitError
-    assert_status_code(response)
-
-    response_data = response.json()
-
-    action = json_dict_of_key(response_data["onResponseReceivedEndpoints"], "appendContinuationItemsAction")
-    about_renderer = json_dict_of_key(action["continuationItems"], "aboutChannelRenderer")
-    links = json_path_get(about_renderer, "metadata/aboutChannelViewModel/links")
-
-    ldict = {}
-    for l in links:
-        k, v = _parse_link(l)
-        assert k not in ldict
-        ldict[k] = v
-    return ldict
-
-def get_title(video_id):
-    raise NotImplementedError
-
-    response_data = _get_ytm_player_data(video_id)
-
-    details = response_data["videoDetails"]
-    owner = json_path_get(response_data, "videoDetails/microformat/microformatDataRenderer/pageOwnerDetails/name")
-
-def get_author(video_id):
-    raise NotImplementedError
-
-
-# TODO: lang
-def get_full_title(video_id):
-    response_data = _get_ytm_player_data(video_id)
-
-    if "videoDetails" not in response_data:
-        logger.error("getting throttled, i guess?")
-        raise RateLimitHitError
-
-    details = response_data["videoDetails"]
-    microformat = response_data["microformat"]
-
-    owner = microformat["microformatDataRenderer"]["pageOwnerDetails"]["name"]
-
-    owner = owner.removesuffix(" - Topic")  # fuck topics
-
-    if details["author"] not in details["title"]:
-        name = f"""{details["author"]} - {details["title"]}"""
-    else:
-        name = details["title"]
-
-    if owner not in details["author"]:
-        name += f" [{owner}]"
-
-    return name
-
 YtVideoId = str
 YtChannelId = str
 
 class YouTubeConnector(MetadataConnector[YtVideoId, YtChannelId]):
-    pass
+    source = Source.YOUTUBE
+
+    def get_track_name(self, track: YtVideoId) -> str:
+        raise NotImplementedError
+
+    # TODO: lang
+    def get_track_title(self, track: YtVideoId) -> str:
+        response_data = _get_ytm_player_data(track)
+
+        if "videoDetails" not in response_data:
+            logger.error("getting throttled, i guess?")
+            raise RateLimitHitError
+
+        details = response_data["videoDetails"]
+        microformat = response_data["microformat"]
+
+        owner = microformat["microformatDataRenderer"]["pageOwnerDetails"]["name"]
+
+        owner = owner.removesuffix(" - Topic")  # fuck topics
+
+        if details["author"] not in details["title"]:
+            name = f"""{details["author"]} - {details["title"]}"""
+        else:
+            name = details["title"]
+
+        if owner not in details["author"]:
+            name += f" [{owner}]"
+
+        return name
+
+    def get_track_tags(self, track: YtVideoId) -> list[str]:
+        raise NotImplementedError
+
+    def get_track_genre(self, track: YtVideoId) -> str:
+        raise NotImplementedError
+
+    def get_artist(self, track: YtVideoId) -> YtChannelId:
+        raise NotImplementedError
+
+    def get_artist_name(self, artist: YtChannelId) -> str:
+        raise NotImplementedError
+
+    def get_artist_links(self, artist: YtChannelId) -> dict[str, str]:
+        response_data = _get_yt_channel_data(artist)
+        section_list_renderer_content = json_path_get(response_data,
+                                                      "header/pageHeaderRenderer/content/pageHeaderViewModel/description/descriptionPreviewViewModel/rendererContext/commandContext/onTap/innertubeCommand/showEngagementPanelEndpoint/engagementPanel/engagementPanelSectionListRenderer/content/sectionListRenderer/contents")
+        item_section_renderer = json_dict_of_key(section_list_renderer_content, "itemSectionRenderer")
+        continuation_item_renderer = json_dict_of_key(item_section_renderer["contents"], "continuationItemRenderer")
+        token = json_path_get(continuation_item_renderer, "continuationEndpoint/continuationCommand/token")
+
+        json_data = {
+            "context": {
+                "client": {
+                    "clientFormFactor": "UNKNOWN_FORM_FACTOR",
+                    "clientName": "WEB",
+                    "clientVersion": "2.20250828.01.00",
+                    "gl": "CZ",
+                    "hl": "en"
+                }
+            },
+            "continuation": token
+        }
+
+        try:
+            response = requests.post(URL_POST_YOUTUBE_LINKS, json=json_data)
+        except RemoteDisconnected:
+            logger.error("getting throttled")
+            raise RateLimitHitError
+        assert_status_code(response)
+
+        response_data = response.json()
+
+        action = json_dict_of_key(response_data["onResponseReceivedEndpoints"], "appendContinuationItemsAction")
+        about_renderer = json_dict_of_key(action["continuationItems"], "aboutChannelRenderer")
+        links = json_path_get(about_renderer, "metadata/aboutChannelViewModel/links")
+
+        ldict = {}
+        for l in links:
+            k, v = _parse_link(l)
+            assert k not in ldict
+            ldict[k] = v
+        return ldict
+
+    def get_artist_tags(self, artist: YtChannelId) -> list[str]:
+        raise NotImplementedError

@@ -1,14 +1,20 @@
 from dataclasses import dataclass
 
+from .. import ConfigReader
+from . import MetadataConnector, Source, Track
 
-@dataclass
-class Artist:
-    id: str
-    name: str
-    pass
+"""
+[artist "id"]
+title = 
+name = 
+tags = 
+links = 
+[track "id"]
+tags = 
+name = 
+genre = 
+artist = 
+"""
 
-@dataclass
-class Track:
-    id: str
-    title: str
-    pass
+class LocalConnector(MetadataConnector):
+    source = Source.SOUNDCLOUD
