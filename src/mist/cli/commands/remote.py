@@ -1,7 +1,7 @@
 import argparse
 import warnings
 
-from ... import Mist
+from ... import Mist, log
 from .. import utils
 
 def build_parser_add(subparsers, mist: Mist):
@@ -10,6 +10,7 @@ def build_parser_add(subparsers, mist: Mist):
     parser.add_argument("url", metavar="<url>")
 
     def func(args):
+        log.debug(f"batu add {args.name} {args.url}")
         mist.remote_add(args.name, args.url)
 
     parser.set_defaults(func=func, parser=parser)
@@ -63,11 +64,10 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
     parser.add_argument("-v", "--verbose", action="store_true")
 
     def func(args):
-        for name in mist.remotes_list():
-            line = name
-            # FIXME: verbosity
+        for remote in mist.get_remotes():
+            line = remote.name
             if args.verbose:
-                line = f"{utils.pad_align(f"{line} ")}{mist.config.active.get(f"remote.{name}.url", None)}"
+                line = f"{utils.pad_align(f"{line} ")}{remote.url}"
 
             print(line)
 

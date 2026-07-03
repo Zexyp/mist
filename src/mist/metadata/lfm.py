@@ -10,6 +10,9 @@ from . import MetadataConnector, Source, NotSupported
 from .scrape_utils import assert_status_code, urlappend, assert_single
 from .. import log
 
+class Autism(BaseException):
+    pass
+
 # https://schema.org/MusicGroup
 # vs_i_gs_i
 # vs.i.gs.i.e.hvdi.do.d@gmail.com
@@ -27,6 +30,20 @@ URL_TAGS_ENDPOINT = "+tags"
 
 logger = log.spawn_logger(__name__)
 
+def _detect_server_autism(response):
+    if response.status_code == 600:
+        raise Autism
+    assert_status_code(response)
+
+def retry_on_autism(func):
+    def wrapper(*args, **kwargs):
+        while True:
+            try:
+                return func(*args, **kwargs)
+            except Autism:
+                logger.debug("autism detected")
+    return wrapper
+
 # get track
 def match_track(yt_ident: str, title: str) -> str | None:
     search_params = {
@@ -39,7 +56,6 @@ def match_track(yt_ident: str, title: str) -> str | None:
     tree = etree.HTML(response.content)
     tracks = tree.xpath(f"//tr[.//a[@href='https://www.youtube.com/watch?v={yt_ident}']]/td[4]/a/@href")
 
-    assert len(tracks) <= 1
     if not tracks:
         logger.debug("no track for genre lookup found")
         return None
@@ -55,11 +71,12 @@ def _extract_tags_basic(url) -> list[str]:
 
     return tags
 
+@retry_on_autism
 def _extract_tags(lfm_url) -> list[str]:
     url = urlappend(lfm_url, URL_TAGS_ENDPOINT)
 
     response = requests.get(url)
-    assert_status_code(response)
+    _detect_server_autism(response)
 
     tree = etree.HTML(response.content)
     tags = tree.xpath("//h3/a[starts-with(@href, '/tag/')]/text()")

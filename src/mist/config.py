@@ -7,6 +7,8 @@ from . import files, log
 
 # todo: from collections import OrderedDict
 
+_SEPARATOR = "."
+
 """not so reader after all"""
 class ConfigReader:
     def __init__(self, settings: dict[str, str] = None, path: str = None,
@@ -27,7 +29,6 @@ class ConfigReader:
     # fixme: i'm crying
     def get(self, key: str, default=None) -> str:
         result = self.settings.get(key, default)
-        assert result is not None, "empty key reached"
         return result
 
     def getbool(self, key: str, default=None) -> bool:
@@ -47,6 +48,14 @@ class ConfigReader:
     def getsub(self, key: str) -> dict[str, str]:
         return {k.removeprefix(key): v for k, v in self.settings.items() if k.startswith(key)}
 
+    def keys(self, key: str):
+        ls = set()
+        for k in self.settings:
+            if k.startswith(key):
+                name = k.removeprefix(key).split(_SEPARATOR, 1)[0]
+                ls.add(name)
+        return list(ls)
+
     def iter(self, key: str):
         """itareate over common key prefixes"""
         raise NotImplementedError
@@ -63,7 +72,7 @@ class ConfigReader:
                 for k, v in value.items():
                     self.set(f"{key}{k}", v)
             case _:
-                assert False, "invalid value for set"
+                assert False, f"invalid value for set ({type(value).__name__})"
 
     def unset(self, key: str, sub: bool = False):
         if not sub:
@@ -107,7 +116,7 @@ class ConfigReader:
 class ConfigStack:
     def __init__(self):
         #self.general: ConfigReader = self._create_config()
-        self.general: ConfigReader = self._create_config(os.path.join(str(pathlib.Path.home()), ".mistconfig"))
+        self.general: ConfigReader = self._create_config(os.path.join(str(pathlib.Path.home()), files.FILE_GLOBAL_CONFIG))
         self.local: ConfigReader = self._create_config(None)
         #self.environment: ConfigReader = self._create_config(None)
         self.args: ConfigReader = self._create_config(None)
@@ -145,10 +154,10 @@ def _read_ini(path: str) -> dict[str, str]:
     parser.read(path)
     d = {}
     for section in parser.sections():
-        section_path = ".".join([p.strip("\"") for p in section.split(" ")])
+        section_path = _SEPARATOR.join([p.strip("\"") for p in section.split(" ")])
 
         for key, value in parser.items(section):
-            d[f"{section_path}.{key}"] = value
+            d[f"{section_path}{_SEPARATOR}{key}"] = value
 
     return d
 
@@ -163,8 +172,8 @@ def _convert_to_ini(d: dict[str, str]) -> configparser.ConfigParser:
         section = key_parts[0]
         key = key_parts[1]
 
-        if "." in key:
-            tail_parts = key.rsplit(".", 1)
+        if _SEPARATOR in key:
+            tail_parts = key.rsplit(_SEPARATOR, 1)
             section = f"{section} \"{tail_parts[0]}\""
             key = tail_parts[1]
 

@@ -20,6 +20,16 @@ def _parse_configuration_param(arg: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 # TODO: --config-env=<name>=<envvar>, docs paths, -p --paginate, -P --no-pager, --work-tree=<path>, --no-lazy-fetch, --no-advice,
+# TODO: commands
+"""
+pull, status, diff, submodule, tag, restore
+add
+rm
+gc
+restore
+ls-files
+ignore
+"""
 
 class HelpAction(argparse.Action):
     def __init__(self, option_strings, dest, commands=None, **kwargs):
@@ -51,7 +61,7 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(metavar="<command>", dest="command")
 
     from .commands import help as cmd_help
-    from .commands import init, config, remote, fetch, merge, clone  # , checkout, pull, status, diff, submodule, tag, rm, restore, commit
+    from .commands import init, config, remote, fetch, merge, clone, ls_remote
     command_parsers = {
         "help": cmd_help.build_parser(subparsers, mist),
         "init": init.build_parser(subparsers, mist),
@@ -60,6 +70,7 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
         "fetch": fetch.build_parser(subparsers, mist),
         "merge": merge.build_parser(subparsers, mist),
         "clone": clone.build_parser(subparsers, mist),
+        "ls-remote": ls_remote.build_parser(subparsers, mist),
     }
 
     from importlib.metadata import version

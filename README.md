@@ -57,10 +57,12 @@ Colorful logging.
 - `core.debug`
 - `core.color`
 - `core.version`
+- `core.concurrency`
 
 
 - `remote.<name>.url`
 - `remote.<name>.skipFetchAll`
+
 
 - `clone.defaultRemoteName`
 

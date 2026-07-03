@@ -8,6 +8,7 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
     parser.add_argument("topic", nargs="?")
 
     def func(args):
+        parser.error("use -h/--help")
         raise NotImplementedError
 
     parser.set_defaults(func=func, parser=parser)

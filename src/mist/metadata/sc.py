@@ -1,4 +1,5 @@
 import functools
+import os
 from pprint import pprint
 import json
 import re
@@ -7,8 +8,9 @@ from typing import Callable
 import requests
 from lxml import etree
 
-from . import MetadataConnector, Source, TArtist, TTrack, NotSupported
+from . import MetadataConnector, Source, NotSupported
 from .scrape_utils import extract_script_data, json_dict_of_key, assert_status_code, assert_single
+from ..log import spawn_logger
 
 # todo: locale
 
@@ -38,6 +40,8 @@ URL_GET_SEARCH_PEOPLE = URL_HOST + "/search/people?q={query}"
 URL_GET_SEARCH_SOUNDS = URL_HOST + "/search/sounds?q={query}"
 URL_GET_SEARCH_ALBUMS = URL_HOST + "/search/albums?q={query}"
 URL_GET_SEARCH_SETS = URL_HOST + "/search/sets?q={query}"
+
+log = spawn_logger(__name__)
 
 @functools.lru_cache
 def _prepare_client_id_old():
@@ -103,7 +107,6 @@ def search_tracks(query: str, limit: int | None = None):
     # lambda r: print(r["id"], r["title"], r["genre"], r["tag_list"])
     return _search_wrapper(URL_API_GET_SEARCH_TRACKS, query, limit)
 
-
 def get_user_id(canonical_id: str) -> str:
     response = requests.get(URL_GET_USER_ID.format(canonical_id=canonical_id))
     assert_status_code(response)
@@ -111,6 +114,14 @@ def get_user_id(canonical_id: str) -> str:
     response_data = extract_script_data(tree, "window.__sc_hydration = ")
     user_data = assert_single([i for i in response_data if i["hydratable"] == "user"])["data"]
     return user_data["id"]
+
+def match_track(title: str, user_url: str):
+    user_id = get_user_id(os.path.basename(user_url))
+    candidates = [i for i in search_tracks(title) if user_id == i["user"]["id"] and title.lower() == i["title"].lower()]
+    if len(candidates) > 1:
+        log.debug(f"multiple candidates: {candidates}")
+
+    return candidates[0]["id"] if candidates else None
 
 SoundCloudTrackId = str
 SoundCloudUserId = str
@@ -136,7 +147,14 @@ class SoundCloudConnector(MetadataConnector[SoundCloudTrackId, SoundCloudUserId]
         response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=track))
         response_data = response.json()
         tag_list = response_data["tag_list"]
-        return tag_list.split(" ") if tag_list and not tag_list.isspace() else []
+        tags = None
+        if not tag_list:
+            tags = None
+        elif tag_list.startswith("\"") and tag_list.endswith("\""):
+            tags = tag_list.strip("\"").split(",")
+        elif not tag_list.isspace():
+            tags = tag_list.split(" ")
+        return tags
 
     def get_track_genre(self, track: SoundCloudTrackId) -> str:
         response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=track))

@@ -1,4 +1,7 @@
 import os
+import warnings
+from dataclasses import dataclass
+
 from . import files
 from .config import ConfigReader, ConfigStack
 from .errors import MistError
@@ -6,6 +9,7 @@ from . import log
 from . import config
 from .messages import *
 from . import shenanigans
+from .shenanigans import Entry
 from .utils import url_strip_utm, url_strip_share_identifier
 
 # mist - another stupid content tracker
@@ -30,6 +34,12 @@ def _find_repository_dir(start: str, soft: bool = True) -> str | None:
 def _sanitize_url(url: str) -> str:
     url = url_strip_share_identifier(url)
     url = url_strip_utm(url)
+    return url
+
+@dataclass
+class Remote:
+    name: str = None
+    url: str = None
 
 class Mist:
     def __init__(self):
@@ -94,14 +104,19 @@ class Mist:
 
         section_name = self._remote_section_name(remote)
 
-        if tags:
-            raise NotImplementedError
+        warnings.warn("tags enable disable not implemented")
 
-        items = shenanigans.get_item_ids(self.config.local.get(f"{section_name}.url"), progress=progress)
+        items = shenanigans.get_entries(self.config.local.get(f"{section_name}.url"),
+                                        progress=progress,
+                                        max_concurrency=self.config.local.getint("core.concurrency", os.cpu_count()))
 
-        with open(self._get_cache_file(remote, files.CACHE_TYPE_ITEMS), mode="w") as f:
-            for i in items:
-                f.write(f"{i}\n")
+        from .metadata import local
+        local.save(self._get_cache_file(remote, files.CACHE_TYPE_ENTRIES), items)
+
+    def list_remote(self, remote_url: str) -> list[Entry]:
+        entries = shenanigans.get_entries_fast(_sanitize_url(remote_url),
+                                               progress=lambda m: log.debug(m))
+        return entries
 
     def merge(self, remote: str, progress: Callable[[str], None] = None):
         raise NotImplementedError
@@ -109,6 +124,26 @@ class Mist:
     def clone(self, url: str, destination_dir: str = None, origin: str = None):
         url = _sanitize_url(url)
         raise NotImplementedError
+
+    def get_remotes(self) -> list[Remote]:
+        self._assert_repository()
+
+        keys = self.config.local.keys("remote.")
+        return [self.get_remote(k) for k in keys]
+
+    def get_remote(self, name) -> Remote | None:
+        self._assert_repository()
+
+        section_name = self._remote_section_name(name)
+
+        if not self.config.local.has(f"{section_name}.", sub=True):
+            return None
+
+        remote = Remote()
+        remote.name = name
+        remote.url = self.config.local.get(f"{section_name}.url")
+
+        return remote
 
     @staticmethod
     def _remote_section_name(mame: str) -> str:
@@ -122,17 +157,12 @@ class Mist:
     def _assert_remote(self, name: str):
         self._assert_repository()
 
+        if name is None:
+            raise MistError(MSG_NO_REMOTE)
+
         section_name = self._remote_section_name(name)
         if not self.config.local.has(f"{section_name}.", sub=True):
             raise MistError(MSG_NO_SUCH_REMOTE.format(name=name))
-
-    def remotes_list(self) -> list[str]:
-        ls = set()
-        for key in self.config.local.settings:
-            if key.startswith("remote."):
-                name = key.removeprefix("remote.").split(".", 1)[0]
-                ls.add(name)
-        return list(ls)
 
     def remote_add(self, name: str, url: str):
         url = _sanitize_url(url)
@@ -181,17 +211,17 @@ class Mist:
 
         return os.path.join(self.repository_dir, files.FILE_REPOSITORY_REMOTE)
 
-    def active_remote_get(self) -> str:
+    def active_remote_name_get(self) -> str | None:
         self._assert_repository()
 
-        with open(self._get_active_remote_storage_file(), mode="r") as f:
+        file = self._get_active_remote_storage_file()
+        if not os.path.isfile(file):
+            return None
+        with open(file, mode="r") as f:
             return f.readline().strip()
 
-    def active_remote_set(self, name: str):
+    def active_remote_name_set(self, name: str):
         self._assert_remote(name)
 
         with open(self._get_active_remote_storage_file(), mode="w") as f:
             f.write(f"{name}\n")
-
-#class Remote:
-#    raise NotImplementedError

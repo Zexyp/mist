@@ -21,9 +21,9 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
     def func(args):
         if args.set_upstream:
             assert len(args.remote) == 1
-            mist.active_remote_set(args.remote[0])
+            mist.active_remote_name_set(args.remote[0])
 
-        remotes = args.remote or [mist.active_remote_get()]
+        remotes = args.remote or [mist.active_remote_name_get()]
         assert remotes
 
         progress = _report_progress if args.progress else None

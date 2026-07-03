@@ -7,26 +7,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import inspect
 
+from .. import Entry
 from ..log import spawn_logger
-
-"""
-@dataclass
-class Artist:
-    id: str = None
-    name: str = None
-    tags: list[str] = None
-    links: dict[str, str] = None
-"""
-
-@dataclass
-class Track:
-    id: str = None
-    name: str = None
-    title: str = None
-    tags: list[str] = None
-    artist: str = None
-    artist_name: str = None
-    genre: str = None
 
 log = spawn_logger(__name__)
 
@@ -113,9 +95,12 @@ class MetadataConnector(Generic[TTrack, TArtist], ABC):
 class Data:
     yt_video_id: str = None
     yt_title: str = None
+    yt_channel_id: str = None
+    yt_channel_links: dict[str, str] = None
+
     lfm_track_url: str = None
-    lfm_artist_links: dict[str, str] = None
     lfm_title: str = None
+    lfm_artist_links: dict[str, str] = None
 
 @dataclass
 class ConnectorLink:
@@ -135,7 +120,7 @@ class MetadataConnectorRegistry:
     def add_link(self, link: ConnectorLink):
         self.links.append(link)
 
-    def get_connector(self, source: Source) -> Optional[MetadataConnector]:
+    def get_node(self, source: Source) -> Optional[MetadataConnector]:
         return self.nodes.get(source)
 
     def get_links(self, source: Source) -> list[ConnectorLink]:
@@ -163,20 +148,26 @@ def _build_registry():
         return lfm.match_track(data.yt_video_id, data.yt_title)
 
     def lastfm_to_soundcloud_matcher(data: Data):
+        if not data.lfm_artist_links or "SoundCloud" not in data.lfm_artist_links:
+            return None
         # this line is fucking with my PyCharm 2025.2.1.1
-        user_id = sc.get_user_id(os.path.basename(data.lfm_artist_links["SoundCloud"]))
-        candidates = [i for i in sc.search_tracks(data.lfm_title or data.yt_title) if i["user"]["id"] == user_id]
-        if len(candidates) > 1:
-            log.debug(f"multiple candidates: {candidates}")
+        return sc.match_track(data.lfm_title, data.lfm_artist_links["SoundCloud"])
 
-        return candidates[0]["id"] if candidates else None
+    def youtube_to_soundcloud_matcher(data: Data):
+        if not data.lfm_artist_links:
+            return None
+        scurl = data.yt_channel_links.get("Soundcloud") or data.yt_channel_links.get("Sound Cloud") or data.yt_channel_links.get("SoundCloud")
+        if not scurl:
+            return None
+        return sc.match_track(data.yt_title, scurl)
 
     connectors.add_link(ConnectorLink(youtube, lastfm, youtube_to_lastfm_matcher))
     connectors.add_link(ConnectorLink(lastfm, soundcloud, lastfm_to_soundcloud_matcher))
+    connectors.add_link(ConnectorLink(youtube, soundcloud, youtube_to_soundcloud_matcher))
 
 _build_registry()
 
-def enrich(data: Data, track: Track, item,  using_connector: MetadataConnector) -> Data:
+def enrich(data: Data, track: Entry, item,  using_connector: MetadataConnector) -> Data:
     assert using_connector
 
     def try_enrich(lmbd: Callable[[], Any]):
@@ -185,7 +176,7 @@ def enrich(data: Data, track: Track, item,  using_connector: MetadataConnector) 
         except NotSupported:
             pass
         except Exception as e:
-            log.error(f"{str(inspect.getsourcelines(lmbd)[0][0]).strip()}\n{type(e).__name__}: {e}")
+            log.error(f"connector '{type(using_connector).__name__}' failed during:\n{str(inspect.getsourcelines(lmbd)[0][0]).strip()}\n{type(e).__name__}: {e}")
             return None
 
     track_name = try_enrich(lambda: using_connector.get_track_name(item))
@@ -204,10 +195,12 @@ def enrich(data: Data, track: Track, item,  using_connector: MetadataConnector) 
         case Source.YOUTUBE:
             data.yt_video_id = item
             data.yt_title = track_title
+            data.yt_channel_id = artist
+            data.yt_channel_links = artist_links
         case Source.LASTFM:
             data.lfm_track_url = item
-            data.lfm_artist_links = artist_links
             data.lfm_title = track_title
+            data.lfm_artist_links = artist_links
 
     track.name = track.name or track_name
     track.title = track.title or track_title
@@ -224,24 +217,29 @@ def enrich(data: Data, track: Track, item,  using_connector: MetadataConnector) 
     return data
 
 def obtain(source: Source, entry: str):
+    log.debug(f"collecting metadata for '{entry}'")
+
     visited: set[Source] = set()
 
-    track = Track()
+    track = Entry()
     data = Data()
     queue = [(source, entry)]
 
     while queue:
         source, item = queue.pop(0)
 
-        visited.add(source)
+        if source in visited:
+            continue
 
+        connector = connectors.get_node(source)
         log.debug(f"visiting {source.name}")
-
-        connector = connectors.get_connector(source)
         data = enrich(data, track, item, connector)
 
+        visited.add(source)
+
         for link in connectors.get_links(source):
-            if link.to_connector.source not in visited: # don't add added
+            if link.to_connector.source and link.to_connector.source not in visited: # don't add added
+                log.debug(f"matching {link.from_connector.source} => {link.to_connector.source}")
                 matched = link.matcher(data)
                 if matched:
                     queue.append((link.to_connector.source, matched))

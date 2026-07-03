@@ -36,7 +36,17 @@ def extract_script_data(tree, hook: str):
     return json.loads(json_str)
 
 def assert_status_code(response: requests.Response, code=200):
-    assert response.status_code == code, f"status code anomaly ({response.status_code})"
+    if response.status_code == code:
+        return
+
+    msg = "unexpected anomaly"
+    match response.status_code:
+        case status_code if 100 <= status_code <= 199: msg = "unexpected informational responses"
+        case status_code if 200 <= status_code <= 299: msg = "unexpected successful responses"
+        case status_code if 300 <= status_code <= 399: msg = "unexpected redirection messages"
+        case status_code if 400 <= status_code <= 499: msg = "unexpected client error"
+        case status_code if 500 <= status_code <= 599: msg = "unexpected server error"
+    assert False, f"{msg} ({response.status_code})"
 
 def urlappend(url: str, path: str) -> str:
     return url.rstrip("/") + "/" + path

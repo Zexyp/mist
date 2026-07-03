@@ -7,7 +7,7 @@ import microdata
 import requests
 from lxml import etree
 
-from . import MetadataConnector, Source, TArtist, TTrack, NotSupported
+from . import MetadataConnector, Source, NotSupported
 from .. import log
 from .scrape_utils import json_dict_of_key, json_path_get, extract_script_data, RateLimitHitError, assert_status_code
 
@@ -122,6 +122,11 @@ def _get_yt_channel_data(channel_id):
     response_data = extract_script_data(tree, "var ytInitialData = ")
     return response_data
 
+def _expect_unexpected(response):
+    if response.status_code == 429:
+        raise RateLimitHitError
+    assert_status_code(response)
+
 YtVideoId = str
 YtChannelId = str
 
@@ -160,17 +165,17 @@ class YouTubeConnector(MetadataConnector[YtVideoId, YtChannelId]):
         #raise NotSupported # i don't believe in ass
 
         response = requests.get(URL_GET_YOUTUBE_VIDEO.format(video_id=track))
-        assert_status_code(response)
+        _expect_unexpected(response)
 
         data = microdata.get_items(response.content)[0]
-        return data.keywords.split(",")
+        return data.keywords.split(",") if data.keywords else None
 
     def get_track_genre(self, track: YtVideoId) -> str:
         raise NotSupported
 
     def get_artist(self, track: YtVideoId) -> YtChannelId:
         response = requests.get(URL_GET_YOUTUBE_VIDEO.format(video_id=track))
-        assert_status_code(response)
+        _expect_unexpected(response)
 
         tree = etree.HTML(response.content)
         data = extract_script_data(tree, "var ytInitialPlayerResponse = ")
