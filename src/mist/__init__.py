@@ -52,13 +52,13 @@ def _sanitize_url(url: str) -> str:
     url = url_strip_utm(url)
     return url
 
-def _merge_entry(original: Entry, new: Entry, prune_tags: bool, ignore_tags: bool) -> Entry:
+def _merge_entry(original: Entry, new: Entry, prune_tags: bool, ignore_tags: bool, is_fast: bool) -> Entry:
     assert original.id == new.id
 
-    if ((original.name or "") != (new.name or "") or
-        (original.title or "") != (new.title or "") or
-        (original.genre or "") != (new.genre or "")):
-        raise MistError("names would be overwritten")
+    if not is_fast:
+        original.name = new.name
+        original.title = new.title
+        original.genre = new.genre
 
     if not ignore_tags:
         if not prune_tags and set(original.tags or []).difference(set(new.tags or [])):
@@ -169,7 +169,7 @@ class Mist:
                     new = new_for_merging[0]
                     items.remove(new)
                     # forcing uses the whole new item
-                    merged.append(new if force else _merge_entry(existing, new, prune_tags=prune_tags, ignore_tags=not tags))
+                    merged.append(new if force else _merge_entry(existing, new, prune_tags=prune_tags, ignore_tags=not tags, is_fast=not tags))
                 else:
                     merged.append(existing)
 

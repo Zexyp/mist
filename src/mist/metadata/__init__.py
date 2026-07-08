@@ -92,6 +92,9 @@ class MetadataConnector(Generic[TTrack, TArtist], ABC):
     def get_artist(self, track: TTrack) -> TArtist:
         pass
 
+    def get_track_artwork(self, track: TTrack) -> str | bytes:
+        pass
+
     # endregion
 
     # region artist

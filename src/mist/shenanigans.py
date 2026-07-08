@@ -11,6 +11,7 @@ from .log import spawn_logger
 from .metadata import Source
 from .utils import strip_ansi
 from . import Entry
+from . import log
 
 _DUMP_DATA = False
 
@@ -190,8 +191,13 @@ def download_entries(platform: Source, entries: list[Entry], max_concurrency: in
         from . import metadata
         url = metadata.url_source(platform, item.id)
 
-        with YoutubeDL(opts) as ydl:
-            ydl.download([url])
+        try:
+            with YoutubeDL(opts) as ydl:
+                ydl.download([url])
+        except DownloadError as e:
+            log.error(f"filed to download entry '{item.id}': {e}")
+            log.exception(e)
+
 
         # TODO: tag
 

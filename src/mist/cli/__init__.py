@@ -22,7 +22,7 @@ def _parse_configuration_param(arg: str) -> tuple[str, str]:
 # TODO: --config-env=<name>=<envvar>, docs paths, -p --paginate, -P --no-pager, --work-tree=<path>, --no-lazy-fetch, --no-advice,
 # TODO: commands
 """
-pull, status, diff, submodule, tag, restore
+status, diff, submodule, tag, restore
 add
 rm
 gc
@@ -61,15 +61,16 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(metavar="<command>", dest="command")
 
     from .commands import help as cmd_help
-    from .commands import init, config, remote, fetch, merge, clone, ls_remote, ls_files
+    from .commands import init, config, remote, fetch, merge, clone, ls_remote, ls_files, pull
     command_parsers = {
         "help": cmd_help.build_parser(subparsers, mist),
-        "init": init.build_parser(subparsers, mist),
         "config": config.build_parser(subparsers, mist),
+        "init": init.build_parser(subparsers, mist),
+        "clone": clone.build_parser(subparsers, mist),
         "remote": remote.build_parser(subparsers, mist),
         "fetch": fetch.build_parser(subparsers, mist),
         "merge": merge.build_parser(subparsers, mist),
-        "clone": clone.build_parser(subparsers, mist),
+        "pull": pull.build_parser(subparsers, mist),
         "ls-remote": ls_remote.build_parser(subparsers, mist),
         "ls-files": ls_files.build_parser(subparsers, mist),
     }
