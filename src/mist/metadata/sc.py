@@ -1,5 +1,6 @@
 import functools
 import os
+import shlex
 from pprint import pprint
 import json
 import re
@@ -41,7 +42,7 @@ URL_GET_SEARCH_SOUNDS = URL_HOST + "/search/sounds?q={query}"
 URL_GET_SEARCH_ALBUMS = URL_HOST + "/search/albums?q={query}"
 URL_GET_SEARCH_SETS = URL_HOST + "/search/sets?q={query}"
 
-log = spawn_logger(__name__)
+logger = spawn_logger(__name__)
 
 @functools.lru_cache
 def _prepare_client_id_old():
@@ -107,19 +108,24 @@ def search_tracks(query: str, limit: int | None = None):
     # lambda r: print(r["id"], r["title"], r["genre"], r["tag_list"])
     return _search_wrapper(URL_API_GET_SEARCH_TRACKS, query, limit)
 
-def get_user_id(canonical_id: str) -> str:
+def get_user_id(canonical_id: str):
     response = requests.get(URL_GET_USER_ID.format(canonical_id=canonical_id))
+    if response.status_code == 404:
+        return None
     assert_status_code(response)
     tree = etree.HTML(response.content)
     response_data = extract_script_data(tree, "window.__sc_hydration = ")
     user_data = assert_single([i for i in response_data if i["hydratable"] == "user"])["data"]
     return user_data["id"]
 
-def match_track(title: str, user_url: str):
+def match_track_by_artist(title: str, user_url: str):
     user_id = get_user_id(os.path.basename(user_url))
-    candidates = [i for i in search_tracks(title) if user_id == i["user"]["id"] and title.lower() == i["title"].lower()]
+    if user_id is None:
+        return None
+    tracks = search_tracks(title)
+    candidates = [i for i in tracks if user_id == i["user"]["id"] and title.lower() == i["title"].lower()]
     if len(candidates) > 1:
-        log.debug(f"multiple candidates: {candidates}")
+        logger.debug(f"multiple candidates: {candidates}")
 
     return candidates[0]["id"] if candidates else None
 
@@ -147,13 +153,17 @@ class SoundCloudConnector(MetadataConnector[SoundCloudTrackId, SoundCloudUserId]
         response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=track))
         response_data = response.json()
         tag_list = response_data["tag_list"]
+        #logger.debug(f"fucky wucky tag_list: '{tag_list}'")
         tags = None
-        if not tag_list:
+
+        if tag_list is None:
             tags = None
-        elif tag_list.startswith("\"") and tag_list.endswith("\""):
-            tags = tag_list.strip("\"").split(",")
-        elif not tag_list.isspace():
-            tags = tag_list.split(" ")
+        elif not tag_list or tag_list.isspace():
+            tags = []
+        elif " " in tag_list:
+            tags = shlex.split(tag_list)
+        else:
+            tags = tag_list.split(",")
         return tags
 
     def get_track_genre(self, track: SoundCloudTrackId) -> str:
@@ -169,10 +179,10 @@ class SoundCloudConnector(MetadataConnector[SoundCloudTrackId, SoundCloudUserId]
         response_data = response.json()
         return response_data["user"]["username"]
 
-    def get_artist_links(self, artist: SoundCloudUserId) -> dict[str, str]:
+    def get_artist_links(self, artist: SoundCloudUserId) -> list[str]:
         response = _wrap_request_with_client_id(URL_API_GET_USERS_PROFILES.format(user_id=artist))
         response_data = response.json()
-        return {profile["title"]: profile["url"] for profile in response_data}
+        return [profile["url"] for profile in response_data]
 
     def get_artist_tags(self, artist: SoundCloudUserId) -> list[str]:
         pass

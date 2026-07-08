@@ -4,16 +4,23 @@ from typing import Any
 
 import requests
 
-
 class RateLimitHitError(Exception):
     pass
 
 def json_path_get(root: dict, path: str) -> Any:
+    """reinventing the wheel, no simd optimisation tho"""
     keys = path.split("/")
     element = root
-    for key in keys[:-1]:
+    for key in keys:
+        if key.startswith("[") and key.endswith("]"):
+            index = int(key.strip("[]"))
+            element = element[index]
+            continue
+
+        #if isinstance(element, dict):
+        #    print(element.keys())
         element = element[key]
-    return element[keys[-1]]
+    return element
 
 def json_path_set(root: dict, path: str, value):
     keys = path.split("/")

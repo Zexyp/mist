@@ -2,6 +2,8 @@ import os
 from functools import wraps
 from typing import AnyStr, Callable
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from textwrap import dedent, indent
+import re
 
 from . import log
 
@@ -36,6 +38,13 @@ def url_strip_share_identifier(url: str) -> AnyStr:
     new_query = urlencode(query, doseq=True)
     pure_url = urlunparse(parsed_url._replace(query=new_query))
     return pure_url
+
+def indent_list(ls: list) -> str:
+    # safe function with fallback
+    return indent("\n".join(ls) if ls else "", " " * 4)
+
+def strip_ansi(text):
+    return re.sub(r'\033\[[0-9;]*m', '', text)
 
 class FileCache:
     def __init__(self,
@@ -82,6 +91,7 @@ class FileCache:
 
                     if self.deserialize: data = self.deserialize(data)
 
+                    assert parts[0] not in self.cache
                     self.cache[parts[0]] = data
         else:
             log.debug("cache empty")

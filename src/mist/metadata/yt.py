@@ -8,7 +8,7 @@ import requests
 from lxml import etree
 
 from . import MetadataConnector, Source, NotSupported
-from .. import log
+from ..log import spawn_logger
 from .scrape_utils import json_dict_of_key, json_path_get, extract_script_data, RateLimitHitError, assert_status_code
 
 # todo: locale
@@ -22,12 +22,16 @@ URL_GET_YOUTUBE_CHANNEL = URL_HOST_YOUTUBE + "/channel/{channel_id}"
 URL_POST_YOUTUBE_MUSIC_TITLE = URL_HOST_YOUTUBE_MUSIC + "/youtubei/v1/player"
 
 URL_GET_YOUTUBE_VIDEO = URL_HOST_YOUTUBE + "/watch?v={video_id}"
+URL_GET_YOUTUBE_MUSIC_VIDEO = URL_HOST_YOUTUBE_MUSIC + "/watch?v={video_id}"
 
-logger = log.spawn_logger(__name__)
+logger = spawn_logger(__name__)
 
-def _parse_link(link) -> tuple[str, str]:
+_DUMP_UNEXPECTED_DATA = True
+
+def _parse_link(link) -> str:
     vm = link["channelExternalLinkViewModel"]
-    return vm["title"]["content"], vm["link"]["content"]
+    #vm["title"]["content"]
+    return vm["link"]["content"]
 
 def _get_ytm_player_data(ident):
     json_data = {
@@ -94,7 +98,7 @@ def _get_ytm_player_data(ident):
                 #
                 #
                 #
-                "clientVersion": "1.20240617.01.00-canary_control_1.20240624.01.00",
+                "clientVersion": "1.20260630.02.00-canary_control_1.20260630.02.00",
             },
         },
     }
@@ -110,6 +114,14 @@ def _get_ytm_player_data(ident):
 
     return response_data
 
+def _get_yt_video_data(ident):
+    response = requests.get(URL_GET_YOUTUBE_VIDEO.format(video_id=ident))
+    assert_status_code(response)
+
+    tree = etree.HTML(response.content)
+    response_data = extract_script_data(tree, "window.WIZ_global_data = ")
+    pprint(response_data)
+
 def _get_yt_channel_data(channel_id):
     try:
         response = requests.get(URL_GET_YOUTUBE_CHANNEL.format(channel_id=channel_id))
@@ -122,10 +134,50 @@ def _get_yt_channel_data(channel_id):
     response_data = extract_script_data(tree, "var ytInitialData = ")
     return response_data
 
+def _get_yt_channel_description_data(channel_id):
+    response_data = _get_yt_channel_data(channel_id)
+    on_tap = json_path_get(response_data, "header/pageHeaderRenderer/content/pageHeaderViewModel/description/descriptionPreviewViewModel/rendererContext/commandContext/onTap")
+    innertube_command = json_path_get(on_tap, "innertubeCommand")
+    continuation_item_renderer = json_path_get(innertube_command, "showEngagementPanelEndpoint/engagementPanel/engagementPanelSectionListRenderer/content/sectionListRenderer/contents/[0]/itemSectionRenderer/contents/[0]/continuationItemRenderer")
+    continuation_command = json_path_get(continuation_item_renderer, "continuationEndpoint/continuationCommand")
+    token = json_path_get(continuation_command, "token")
+
+    client = {
+        "clientFormFactor": "UNKNOWN_FORM_FACTOR",
+        "clientName": "WEB",
+        "clientVersion": "2.20250828.01.00",
+        "gl": "CZ",
+        "hl": "en"
+    }
+
+    json_data = {
+        "context": {
+            "client": client
+        },
+        "continuation": token
+    }
+
+    try:
+        response = requests.post(URL_POST_YOUTUBE_LINKS, json=json_data)
+    except RemoteDisconnected:
+        logger.error("getting throttled")
+        raise RateLimitHitError
+    assert_status_code(response)
+
+    return response.json()
+
 def _expect_unexpected(response):
     if response.status_code == 429:
         raise RateLimitHitError
     assert_status_code(response)
+
+def canonicalize_channel_id(channel_url) -> str:
+    response = requests.get(channel_url)
+    assert_status_code(response)
+
+    data = microdata.get_items(response.content)[0]
+    # more data can be found in breadcrumbs
+    return data.properties.url
 
 YtVideoId = str
 YtChannelId = str
@@ -142,6 +194,8 @@ class YouTubeConnector(MetadataConnector[YtVideoId, YtChannelId]):
 
         if "videoDetails" not in response_data:
             logger.error("getting throttled, i guess?")
+            if _DUMP_UNEXPECTED_DATA:
+                logger.debug(json.dumps(response_data, indent=2))
             raise RateLimitHitError
 
         details = response_data["videoDetails"]
@@ -184,46 +238,20 @@ class YouTubeConnector(MetadataConnector[YtVideoId, YtChannelId]):
     def get_artist_name(self, artist: YtChannelId) -> str:
         raise NotSupported
 
-    def get_artist_links(self, artist: YtChannelId) -> dict[str, str]:
-        response_data = _get_yt_channel_data(artist)
-        section_list_renderer_content = json_path_get(response_data,
-                                                      "header/pageHeaderRenderer/content/pageHeaderViewModel/description/descriptionPreviewViewModel/rendererContext/commandContext/onTap/innertubeCommand/showEngagementPanelEndpoint/engagementPanel/engagementPanelSectionListRenderer/content/sectionListRenderer/contents")
-        item_section_renderer = json_dict_of_key(section_list_renderer_content, "itemSectionRenderer")
-        continuation_item_renderer = json_dict_of_key(item_section_renderer["contents"], "continuationItemRenderer")
-        token = json_path_get(continuation_item_renderer, "continuationEndpoint/continuationCommand/token")
-
-        json_data = {
-            "context": {
-                "client": {
-                    "clientFormFactor": "UNKNOWN_FORM_FACTOR",
-                    "clientName": "WEB",
-                    "clientVersion": "2.20250828.01.00",
-                    "gl": "CZ",
-                    "hl": "en"
-                }
-            },
-            "continuation": token
-        }
-
-        try:
-            response = requests.post(URL_POST_YOUTUBE_LINKS, json=json_data)
-        except RemoteDisconnected:
-            logger.error("getting throttled")
-            raise RateLimitHitError
-        assert_status_code(response)
-
-        response_data = response.json()
+    def get_artist_links(self, artist: YtChannelId) -> list[str]:
+        response_data = _get_yt_channel_description_data(artist)
 
         action = json_dict_of_key(response_data["onResponseReceivedEndpoints"], "appendContinuationItemsAction")
         about_renderer = json_dict_of_key(action["continuationItems"], "aboutChannelRenderer")
-        links = json_path_get(about_renderer, "metadata/aboutChannelViewModel/links")
+        about = json_path_get(about_renderer, "metadata/aboutChannelViewModel")
 
-        ldict = {}
-        for l in links:
-            k, v = _parse_link(l)
-            assert k not in ldict
-            ldict[k] = v
-        return ldict
+        if "links" not in about:
+            return None
+
+        links = about["links"]
+        parsed = [_parse_link(l) for l in links]
+
+        return parsed
 
     def get_artist_tags(self, artist: YtChannelId) -> list[str]:
         raise NotSupported

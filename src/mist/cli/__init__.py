@@ -61,7 +61,7 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(metavar="<command>", dest="command")
 
     from .commands import help as cmd_help
-    from .commands import init, config, remote, fetch, merge, clone, ls_remote
+    from .commands import init, config, remote, fetch, merge, clone, ls_remote, ls_files
     command_parsers = {
         "help": cmd_help.build_parser(subparsers, mist),
         "init": init.build_parser(subparsers, mist),
@@ -71,10 +71,11 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
         "merge": merge.build_parser(subparsers, mist),
         "clone": clone.build_parser(subparsers, mist),
         "ls-remote": ls_remote.build_parser(subparsers, mist),
+        "ls-files": ls_files.build_parser(subparsers, mist),
     }
 
     from importlib.metadata import version
-    parser.add_argument("-v", "--version", action="version", version=f"Mist {_package_name}")
+    parser.add_argument("-v", "--version", action="version", version=f"Mist {version(_package_name)}")
     help_group = parser.add_mutually_exclusive_group(required=False)
     help_group.add_argument("-h", action=HelpAction, nargs=0, help="short help", commands=command_parsers)
     help_group.add_argument("--help", action=HelpAction, nargs=0, help="extensive help", commands=command_parsers)
@@ -101,11 +102,11 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
     parser.set_defaults(parser=parser)
     return parser
 
-def _internal_run():
+def _internal_run(arguments: list[str]):
     mist = Mist()
     parser = build_parser(mist)
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     previous_dir = None
     if args.C:
@@ -136,24 +137,26 @@ def _internal_run():
     if previous_dir:
         os.chdir(previous_dir)
 
-def run():
+def run(arguments: list[str]) -> int:
+    # returns exit code
     try:
         with warnings.catch_warnings(record=True) as recorded_warnings:
-            _internal_run()
+            _internal_run(arguments)
     except MistError as e:
-        log.exception(e)
         log.error(str(e))
-        sys.exit(1)
-    except NotImplementedError as e:
         log.exception(e)
+        return 1
+    except NotImplementedError as e:
         log.fatal(f"{type(e).__name__}: {str(e)}")
         log.fatal("lazy fuck detected")
-        sys.exit(1)
-    except Exception as e:
         log.exception(e)
+        return 1
+    except Exception as e:
         log.fatal(f"{type(e).__name__}: {str(e)}")
         log.fatal("unrecoverable error")
-        sys.exit(1)
+        log.exception(e)
+        return 1
     finally:
         for w in recorded_warnings:
             log.warning(w.message)
+    return 0

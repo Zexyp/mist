@@ -2,7 +2,7 @@ import argparse
 import warnings
 
 from ... import Mist, log
-from .. import utils
+from .. import cli_utils
 
 def build_parser_add(subparsers, mist: Mist):
     parser = subparsers.add_parser("add")
@@ -67,7 +67,7 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
         for remote in mist.get_remotes():
             line = remote.name
             if args.verbose:
-                line = f"{utils.pad_align(f"{line} ")}{remote.url}"
+                line = f"{cli_utils.pad_align(f"{line} ")}{remote.url}"
 
             print(line)
 

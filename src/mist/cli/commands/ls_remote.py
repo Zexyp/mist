@@ -2,7 +2,7 @@ import argparse
 import os
 
 from ... import Mist, MistError, log
-from .. import utils as cli_utils
+from .. import cli_utils
 
 # TODO: -q --quiet, --[no-]sort, -o --[no-]server-option <server-specific>
 

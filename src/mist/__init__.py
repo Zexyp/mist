@@ -1,6 +1,25 @@
+# mist - another stupid content tracker
+
 import os
 import warnings
 from dataclasses import dataclass
+
+_package_name = __package__
+# entry can be just a remote snapshot
+# or a local file description
+# or be full of metadata
+@dataclass
+class Entry:
+    id: str = None
+    title: str = None
+    url: str = None
+    name: str = None
+    tags: list[str] = None
+    artist: str = None
+    artist_name: str = None
+    genre: str = None
+    artist_links: list[tuple[str, str]] = None
+    visited: set[str] = None
 
 from . import files
 from .config import ConfigReader, ConfigStack
@@ -9,12 +28,8 @@ from . import log
 from . import config
 from .messages import *
 from . import shenanigans
-from .shenanigans import Entry
 from .utils import url_strip_utm, url_strip_share_identifier
-
-# mist - another stupid content tracker
-
-_package_name = __package__
+from .metadata import local as local_cache, Source
 
 def _find_repository_dir(start: str, soft: bool = True) -> str | None:
     assert os.path.isabs(start)
@@ -35,6 +50,25 @@ def _sanitize_url(url: str) -> str:
     url = url_strip_share_identifier(url)
     url = url_strip_utm(url)
     return url
+
+def _merge_entry(original: Entry, new: Entry) -> Entry:
+    assert original.id == new.id
+
+    original.name = original.name or new.name
+    original.title = original.title or new.title
+    original.genre = original.genre or new.genre
+    if new.tags:
+        if original.tags:
+            original.tags.extend(new.tags)
+        else:
+            original.tags = new.tags
+    if new.visited:
+        if original.visited:
+            original.visited.update(new.visited)
+        else:
+            original.visited = new.visited
+
+    return original
 
 @dataclass
 class Remote:
@@ -78,8 +112,9 @@ class Mist:
         return self.repository_dir is not None and os.path.isdir(self.repository_dir) and os.path.basename(self.repository_dir) == files.DIR_REPOSITORY
 
     def init(self, directory: str) -> str:
+        warnings.warn("init: repository reinitialization not implemented")
         if self.is_repository():
-            raise NotImplementedError
+            raise NotImplementedError("repository reinitialization")
 
         target_dir = os.path.join(os.path.abspath(directory), files.DIR_REPOSITORY)
         os.makedirs(target_dir)
@@ -99,19 +134,53 @@ class Mist:
         os.makedirs(os.path.dirname(result), exist_ok=True)
         return result
 
-    def fetch(self, remote: str, tags: bool = False, progress: Callable[[str], None] = None):
+    def fetch(self, remote: str, tags: bool = False, dry_run: bool = False, force: bool = False, progress: Callable[[str], None] = None) -> list[Entry]:
+        """returns a list of locally available entries"""
         self._assert_remote(remote)
+
+        if force:
+            log.debug(f"force fetch")
 
         section_name = self._remote_section_name(remote)
 
-        warnings.warn("tags enable disable not implemented")
+        list_url = self.config.local.get(f"{section_name}.url")
+        if tags:
+            items = shenanigans.get_entries(list_url,
+                                            progress=progress,
+                                            max_concurrency=self.config.local.getint("core.concurrency",
+                                                                                     os.cpu_count()))
+        else:
+            items = shenanigans.get_entries_fast(list_url,
+                                                 progress=progress)
 
-        items = shenanigans.get_entries(self.config.local.get(f"{section_name}.url"),
-                                        progress=progress,
-                                        max_concurrency=self.config.local.getint("core.concurrency", os.cpu_count()))
+        loaded = self.get_remote_entries(remote) or []
 
-        from .metadata import local
-        local.save(self._get_cache_file(remote, files.CACHE_TYPE_ENTRIES), items)
+        merged = []
+        for already_existing in loaded:
+            found = [i for i in items if i.id == already_existing.id]
+            if found:
+                f = found[0]
+                items.remove(f)
+                # forcing uses the whole new item
+                merged.append(f if force else _merge_entry(already_existing, f))
+            else:
+                merged.append(already_existing)
+        merged[:0] = items # prepend existing so the might get overwritten if duplicates occurred
+        loaded = merged
+
+        if not dry_run:
+            entries_file = self._get_cache_file(remote, files.CACHE_TYPE_ENTRIES)
+            local_cache.cache_save(entries_file, loaded)
+
+        return loaded
+
+    def get_remote_entries(self, remote: str) -> list[Entry] | None:
+        self._assert_remote(remote)
+
+        entries_file = self._get_cache_file(remote, files.CACHE_TYPE_ENTRIES)
+        if not os.path.exists(entries_file):
+            return None
+        return local_cache.cache_load(entries_file)
 
     def list_remote(self, remote_url: str) -> list[Entry]:
         entries = shenanigans.get_entries_fast(_sanitize_url(remote_url),

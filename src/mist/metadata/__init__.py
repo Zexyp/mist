@@ -1,16 +1,19 @@
 import os
 from enum import Enum, auto
-from pprint import pprint
+from pprint import pprint, pformat
 from typing import Generic, TypeVar, Callable, Optional, Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import inspect
 
 from .. import Entry
 from ..log import spawn_logger
+from ..utils import indent_list
 
-log = spawn_logger(__name__)
+logger = spawn_logger(__name__)
+
+# TODO: match user/artist
 
 class NotSupported(Exception):
     pass
@@ -20,18 +23,33 @@ class Source(Enum):
     YOUTUBE = auto()
     SOUNDCLOUD = auto()
     LASTFM = auto()
+    BANDCAMP = auto()
+
+    # MistEnum:
+    @property
+    def name(self):
+        return self._name_.lower()
+
+    @classmethod
+    def _missing_(cls, value):
+        for member in cls:
+            if member.name.lower() == str(value).lower():
+                return member
+        return None
 
 def detect_source(url) -> Source:
-    parsed_url = urlparse(url)
+    parsed_url = urlsplit(url)
 
     if parsed_url.scheme == "file":
         return Source.LOCAL
 
-    match parsed_url.netloc:
+    match parsed_url.hostname:
         case "youtube.com" | "www.youtube.com" | "music.youtube.com":
             return Source.YOUTUBE
         case "soundcloud.com":
             return Source.SOUNDCLOUD
+        case u if u.endswith(".bandcamp.com"):
+            return Source.BANDCAMP
         case _:
             assert False, f"unknown source for '{parsed_url.netloc}'"
 
@@ -39,6 +57,8 @@ TTrack = TypeVar('TTrack')
 TArtist = TypeVar('TArtist')
 
 class MetadataConnector(Generic[TTrack, TArtist], ABC):
+    # TODO: album/playlist tags
+
     source: Source
 
     # region track
@@ -72,7 +92,7 @@ class MetadataConnector(Generic[TTrack, TArtist], ABC):
         pass
 
     @abstractmethod
-    def get_artist_links(self, artist: TArtist) -> dict[str, str]:
+    def get_artist_links(self, artist: TArtist) -> list[str]:
         pass
 
     @abstractmethod
@@ -96,11 +116,11 @@ class Data:
     yt_video_id: str = None
     yt_title: str = None
     yt_channel_id: str = None
-    yt_channel_links: dict[str, str] = None
+    yt_channel_links: list[str] = None
 
     lfm_track_url: str = None
     lfm_title: str = None
-    lfm_artist_links: dict[str, str] = None
+    lfm_artist_links: list[str] = None
 
 @dataclass
 class ConnectorLink:
@@ -115,6 +135,7 @@ class MetadataConnectorRegistry:
         self.links: list[ConnectorLink] = []
 
     def register(self, connector: MetadataConnector):
+        assert connector.source not in self.nodes
         self.nodes[connector.source] = connector
 
     def add_link(self, link: ConnectorLink):
@@ -132,34 +153,36 @@ def _build_registry():
     from . import lfm
     from . import yt
     from . import sc
-    from . import local
+    from . import bc
 
     youtube = yt.YouTubeConnector()
     soundcloud = sc.SoundCloudConnector()
     lastfm = lfm.LastFmConnector()
-    #local = local.LocalConnector()
+    bandcamp = bc.BandcampConnector()
 
     connectors.register(youtube)
     connectors.register(soundcloud)
     connectors.register(lastfm)
-    #connectors.register(local)
+    connectors.register(bandcamp)
 
     def youtube_to_lastfm_matcher(data: Data):
         return lfm.match_track(data.yt_video_id, data.yt_title)
 
     def lastfm_to_soundcloud_matcher(data: Data):
-        if not data.lfm_artist_links or "SoundCloud" not in data.lfm_artist_links:
+        # lfm links should be set
+        found = [l for l in data.lfm_artist_links if urlsplit(l).hostname == "soundcloud.com"]
+        if not found:
             return None
-        # this line is fucking with my PyCharm 2025.2.1.1
-        return sc.match_track(data.lfm_title, data.lfm_artist_links["SoundCloud"])
+        # this line is fucking with my PyCharm 2025.2.1.1, erm *was*
+        return sc.match_track_by_artist(data.lfm_title, found[0])
 
     def youtube_to_soundcloud_matcher(data: Data):
-        if not data.lfm_artist_links:
+        # yt links should be set but yt may have failed
+        found = data.yt_channel_id and [l for l in data.yt_channel_links if urlsplit(l).hostname == "soundcloud.com"]
+        if not found:
             return None
-        scurl = data.yt_channel_links.get("Soundcloud") or data.yt_channel_links.get("Sound Cloud") or data.yt_channel_links.get("SoundCloud")
-        if not scurl:
-            return None
-        return sc.match_track(data.yt_title, scurl)
+        assert len(found) == 1, "which sc link do i use (╯°□°）╯︵ ┻━┻"
+        return sc.match_track_by_artist(data.yt_title, found[0])
 
     connectors.add_link(ConnectorLink(youtube, lastfm, youtube_to_lastfm_matcher))
     connectors.add_link(ConnectorLink(lastfm, soundcloud, lastfm_to_soundcloud_matcher))
@@ -167,16 +190,23 @@ def _build_registry():
 
 _build_registry()
 
+# TODO: utilize cache
+
 def enrich(data: Data, track: Entry, item,  using_connector: MetadataConnector) -> Data:
     assert using_connector
 
+    clean: bool = True
+
     def try_enrich(lmbd: Callable[[], Any]):
+        nonlocal clean
         try:
             return lmbd()
         except NotSupported:
-            pass
+            return None
         except Exception as e:
-            log.error(f"connector '{type(using_connector).__name__}' failed during:\n{str(inspect.getsourcelines(lmbd)[0][0]).strip()}\n{type(e).__name__}: {e}")
+            clean = False
+            logger.error(f"connector '{type(using_connector).__name__}' failed during:\n{str(inspect.getsourcelines(lmbd)[0][0]).strip()}\n{type(e).__name__}: {e}")
+            logger.debug(e, exc_info=True)
             return None
 
     track_name = try_enrich(lambda: using_connector.get_track_name(item))
@@ -213,13 +243,25 @@ def enrich(data: Data, track: Entry, item,  using_connector: MetadataConnector) 
 
     track.artist = track.artist or artist
     track.artist_name = track.artist_name or artist_name
+    if artist_links:
+        if track.artist_links:
+            track.artist_links.extend(artist_links)
+        else:
+            track.artist_links = artist_links
+
+    if clean:
+        if not track.visited:
+            track.visited = set()
+        track.visited.add(using_connector.source.name)
+
+    logger.debug(f"enrichment pass:\n{pformat(track)}")
 
     return data
 
 def obtain(source: Source, entry: str):
-    log.debug(f"collecting metadata for '{entry}'")
+    logger.debug(f"collecting metadata for '{entry}'")
 
-    visited: set[Source] = set()
+    visited: set[tuple[Source, str]] = set()
 
     track = Entry()
     data = Data()
@@ -228,18 +270,18 @@ def obtain(source: Source, entry: str):
     while queue:
         source, item = queue.pop(0)
 
-        if source in visited:
+        if (source, item) in visited:
             continue
 
         connector = connectors.get_node(source)
-        log.debug(f"visiting {source.name}")
+        logger.debug(f"visiting {source.name}")
         data = enrich(data, track, item, connector)
 
-        visited.add(source)
+        visited.add((source, item))
 
         for link in connectors.get_links(source):
             if link.to_connector.source and link.to_connector.source not in visited: # don't add added
-                log.debug(f"matching {link.from_connector.source} => {link.to_connector.source}")
+                logger.debug(f"matching {link.from_connector.source.name} => {link.to_connector.source.name}")
                 matched = link.matcher(data)
                 if matched:
                     queue.append((link.to_connector.source, matched))

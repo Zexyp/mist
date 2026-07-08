@@ -3,6 +3,8 @@ import os
 import logging
 import traceback
 
+from . import _package_name
+
 COL_RESET  = ""
 COL_RED    = ""
 COL_YELLOW = ""
@@ -12,6 +14,8 @@ COL_CYAN   = ""
 SOUND_BASE_PATH = os.path.join(os.path.dirname(__file__), "res", "sounds")
 
 DEBUG: bool = False
+
+# TODO: exc_info=True
 
 def deinit_colors():
     global COL_RESET, COL_YELLOW, COL_DIM, COL_RED, COL_CYAN
@@ -75,6 +79,10 @@ def configure(cfg):
                 init_colors()
         case _:
             assert False
+
+    for l in [logging.getLogger(name) for name in logging.root.manager.loggerDict if name.startswith(_package_name)]:
+        l.setLevel(logging.DEBUG if DEBUG else logging.WARNING)
+    debug("reconfigured loggers")
 
 
 try:

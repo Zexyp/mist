@@ -8,7 +8,7 @@ from lxml import etree
 
 from . import MetadataConnector, Source, NotSupported
 from .scrape_utils import assert_status_code, urlappend, assert_single
-from .. import log
+from ..log import spawn_logger
 
 class Autism(BaseException):
     pass
@@ -28,7 +28,7 @@ URL_GET_AUTHOR = URL_HOST + "/music/{artist}"
 URL_GET_SEARCH_TRACKS = URL_HOST + "/search/tracks"
 URL_TAGS_ENDPOINT = "+tags"
 
-logger = log.spawn_logger(__name__)
+logger = spawn_logger(__name__)
 
 def _detect_server_autism(response):
     if response.status_code == 600:
@@ -57,7 +57,7 @@ def match_track(yt_ident: str, title: str) -> str | None:
     tracks = tree.xpath(f"//tr[.//a[@href='https://www.youtube.com/watch?v={yt_ident}']]/td[4]/a/@href")
 
     if not tracks:
-        logger.debug("no track for genre lookup found")
+        logger.debug("no matching track")
         return None
 
     return urljoin(URL_HOST, tracks[0])
@@ -131,13 +131,13 @@ class LastFmConnector(MetadataConnector[LastFmTrackUrl, LastFmArtistUrl]):
         group = [i for i in items if repr(i.itemtype[0]) == "http://schema.org/MusicGroup"][0]
         return group.name
 
-    def get_artist_links(self, artist: LastFmArtistUrl) -> dict[str, str]:
+    def get_artist_links(self, artist: LastFmArtistUrl) -> list[str]:
         response = requests.get(artist)
         assert_status_code(response)
 
         tree = etree.HTML(response.content)
-        links = tree.xpath("//h3[text()='External Links']/../ul/li/a")
-        return {l.text: l.attrib["href"] for l in links}
+        links = tree.xpath("//h3[text()='External Links']/../ul/li/a/@href")
+        return links
 
     def get_artist_tags(self, artist: LastFmArtistUrl) -> list[str]:
         return _extract_tags(artist)
