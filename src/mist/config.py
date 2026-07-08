@@ -3,11 +3,14 @@ import os
 import pathlib
 from typing import Callable
 
-from . import files, log
+from . import files
+from .log import spawn_logger
 
 # todo: from collections import OrderedDict
 
 _SEPARATOR = "."
+
+logger = spawn_logger(__name__)
 
 """not so reader after all"""
 class ConfigReader:
@@ -95,7 +98,7 @@ class ConfigReader:
 
         _write_ini(self.settings, self.path)
 
-        log.debug(f"config write '{self.path}'")
+        logger.debug(f"config write '{self.path}'")
 
         self.commit()
 
@@ -105,7 +108,7 @@ class ConfigReader:
 
         self.settings = _read_ini(self.path)
 
-        log.debug(f"config read '{self.path}'")
+        logger.debug(f"config read '{self.path}'")
 
         self.commit()
 

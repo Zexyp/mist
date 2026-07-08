@@ -93,6 +93,15 @@ options_entries_flat: dict = {
     "logger": BaseLogger(),
 }
 
+options_download: dict = {
+    "quiet": True,
+    "logger": BaseLogger(),
+    "extract_audio": True,
+    "format": "bestaudio",
+
+    "outtmpl": "%(title)s.%(id)s.%(ext)s",
+}
+
 def get_playlist_title(url: str) -> str:
     try:
         with YoutubeDL(options_playlist_title) as ydl:
@@ -109,7 +118,7 @@ def get_entries(url: str, progress: Callable[[str], None] = None, max_concurrenc
 
     entries = get_entries_fast(url, progress=progress)
 
-    def metadata_collection(e):
+    def metadata_collection(e: Entry):
         from . import metadata
         oe = metadata.obtain(metadata.detect_source(url), e.id)
         oe.id = e.id
@@ -164,3 +173,36 @@ def extract_flat_entry(e: dict) -> Entry:
         entry.title += urlsplit(e["url"]).path.strip("/")
 
     return entry
+
+def download_entries(platform: Source, entries: list[Entry], max_concurrency: int | None = None):
+    if max_concurrency is not None:
+        logger.debug(f"concurrency: {max_concurrency}")
+
+    opts = dict(options_download)
+
+    def download_item(item: Entry):
+        lopts = dict(opts)
+
+        # use fixed name if available
+        if item.title:
+            lopts["outtmpl"] = f"{item.title}.%(id)s.%(ext)s"
+
+        from . import metadata
+        url = metadata.url_source(platform, item.id)
+
+        with YoutubeDL(opts) as ydl:
+            ydl.download([url])
+
+        # TODO: tag
+
+    output = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrency) as executor:
+        futures = [executor.submit(download_item, e) for e in entries]
+
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                output.append(future.result())
+            except concurrent.futures.TimeoutError:
+                logger.error("this took too long...")
+
+    return output

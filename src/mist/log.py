@@ -81,10 +81,11 @@ def configure(cfg):
             assert False
 
     for l in [logging.getLogger(name) for name in logging.root.manager.loggerDict if name.startswith(_package_name)]:
-        l.setLevel(logging.DEBUG if DEBUG else logging.WARNING)
+        l.setLevel(_get_current_level())
     debug("reconfigured loggers")
 
-
+def _get_current_level():
+    return logging.DEBUG if DEBUG else logging.WARNING
 try:
     import colorama
 except ImportError as e:
@@ -118,6 +119,7 @@ _handler.setFormatter(logging.Formatter(
 
 def spawn_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG if DEBUG else logging.WARNING)
+    logger.propagate = False
     logger.addHandler(_handler)
+    logger.setLevel(_get_current_level())
     return logger

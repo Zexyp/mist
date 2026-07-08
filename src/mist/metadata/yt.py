@@ -31,7 +31,8 @@ _DUMP_UNEXPECTED_DATA = True
 def _parse_link(link) -> str:
     vm = link["channelExternalLinkViewModel"]
     #vm["title"]["content"]
-    return vm["link"]["content"]
+    link = vm["link"]["content"]
+    return link
 
 def _get_ytm_player_data(ident):
     json_data = {
@@ -203,17 +204,20 @@ class YouTubeConnector(MetadataConnector[YtVideoId, YtChannelId]):
 
         owner = microformat["microformatDataRenderer"]["pageOwnerDetails"]["name"]
 
-        owner = owner.removesuffix(" - Topic")  # fuck topics
+        if owner.endswith(" - Topic"):
+            owner = owner.removesuffix(" - Topic")  # fuck topics
+            logger.debug("owner is topic")
 
         if details["author"] not in details["title"]:
-            name = f"""{details["author"]} - {details["title"]}"""
+            title = f"""{details["author"]} - {details["title"]}"""
         else:
-            name = details["title"]
+            title = details["title"]
 
         if owner not in details["author"]:
-            name += f" [{owner}]"
+            title += f" [{owner}]"
 
-        return name
+        logger.debug(f"final title is '{title}'")
+        return title
 
     def get_track_tags(self, track: YtVideoId) -> list[str]:
         #raise NotSupported # i don't believe in ass
@@ -249,7 +253,13 @@ class YouTubeConnector(MetadataConnector[YtVideoId, YtChannelId]):
             return None
 
         links = about["links"]
-        parsed = [_parse_link(l) for l in links]
+        parsed = []
+        for l in links:
+            p = _parse_link(l)
+            if p == "support.google.com/youtube?p=sub_to_oac":
+                logger.debug("found garbage link")
+                continue
+            parsed.append(p)
 
         return parsed
 

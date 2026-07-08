@@ -17,7 +17,7 @@ def _parse_configuration_param(arg: str) -> tuple[str, str]:
     SPLIT_BY = "="
     assert SPLIT_BY in arg
     parts = arg.split(SPLIT_BY, 1)
-    return parts[0], parts[1]
+    return parts[0].strip(), parts[1].strip()
 
 # TODO: --config-env=<name>=<envvar>, docs paths, -p --paginate, -P --no-pager, --work-tree=<path>, --no-lazy-fetch, --no-advice,
 # TODO: commands

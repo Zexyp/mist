@@ -3,6 +3,7 @@
 import os
 import warnings
 from dataclasses import dataclass
+from pprint import pprint
 
 _package_name = __package__
 # entry can be just a remote snapshot
@@ -27,9 +28,9 @@ from .errors import MistError
 from . import log
 from . import config
 from .messages import *
-from . import shenanigans
+from . import shenanigans, metadata
 from .utils import url_strip_utm, url_strip_share_identifier
-from .metadata import local as local_cache, Source
+from .metadata import local as local_cache, worktree as worktree_cache
 
 def _find_repository_dir(start: str, soft: bool = True) -> str | None:
     assert os.path.isabs(start)
@@ -51,17 +52,19 @@ def _sanitize_url(url: str) -> str:
     url = url_strip_utm(url)
     return url
 
-def _merge_entry(original: Entry, new: Entry) -> Entry:
+def _merge_entry(original: Entry, new: Entry, prune_tags: bool, ignore_tags: bool) -> Entry:
     assert original.id == new.id
 
-    original.name = original.name or new.name
-    original.title = original.title or new.title
-    original.genre = original.genre or new.genre
-    if new.tags:
-        if original.tags:
-            original.tags.extend(new.tags)
-        else:
-            original.tags = new.tags
+    if ((original.name or "") != (new.name or "") or
+        (original.title or "") != (new.title or "") or
+        (original.genre or "") != (new.genre or "")):
+        raise MistError("names would be overwritten")
+
+    if not ignore_tags:
+        if not prune_tags and set(original.tags or []).difference(set(new.tags or [])):
+            raise MistError("tags would be removed")
+        original.tags = new.tags
+
     if new.visited:
         if original.visited:
             original.visited.update(new.visited)
@@ -134,12 +137,16 @@ class Mist:
         os.makedirs(os.path.dirname(result), exist_ok=True)
         return result
 
-    def fetch(self, remote: str, tags: bool = False, dry_run: bool = False, force: bool = False, progress: Callable[[str], None] = None) -> list[Entry]:
+    def fetch(self, remote: str, tags: bool = False,
+              dry_run: bool = False,
+              force: bool = False,
+              prune: bool = False,
+              prune_tags: bool = False,
+              progress: Callable[[str], None] = None) -> list[Entry]:
         """returns a list of locally available entries"""
         self._assert_remote(remote)
 
-        if force:
-            log.debug(f"force fetch")
+        log.debug(f"fetch {force=}, {prune=}, {prune_tags=}")
 
         section_name = self._remote_section_name(remote)
 
@@ -147,30 +154,31 @@ class Mist:
         if tags:
             items = shenanigans.get_entries(list_url,
                                             progress=progress,
-                                            max_concurrency=self.config.local.getint("core.concurrency",
-                                                                                     os.cpu_count()))
+                                            max_concurrency=self._get_concurrency())
         else:
             items = shenanigans.get_entries_fast(list_url,
                                                  progress=progress)
 
-        loaded = self.get_remote_entries(remote) or []
+        loaded = not prune and self.get_remote_entries(remote) or []
 
         merged = []
-        for already_existing in loaded:
-            found = [i for i in items if i.id == already_existing.id]
-            if found:
-                f = found[0]
-                items.remove(f)
-                # forcing uses the whole new item
-                merged.append(f if force else _merge_entry(already_existing, f))
-            else:
-                merged.append(already_existing)
-        merged[:0] = items # prepend existing so the might get overwritten if duplicates occurred
+        if loaded:
+            for existing in loaded:
+                new_for_merging = [i for i in items if i.id == existing.id]
+                if new_for_merging:
+                    new = new_for_merging[0]
+                    items.remove(new)
+                    # forcing uses the whole new item
+                    merged.append(new if force else _merge_entry(existing, new, prune_tags=prune_tags, ignore_tags=not tags))
+                else:
+                    merged.append(existing)
+
+        merged[:0] = items # prepend existing so they might get overwritten if duplicates occurred
         loaded = merged
 
         if not dry_run:
             entries_file = self._get_cache_file(remote, files.CACHE_TYPE_ENTRIES)
-            local_cache.cache_save(entries_file, loaded)
+            local_cache.local_save(entries_file, loaded)
 
         return loaded
 
@@ -180,15 +188,25 @@ class Mist:
         entries_file = self._get_cache_file(remote, files.CACHE_TYPE_ENTRIES)
         if not os.path.exists(entries_file):
             return None
-        return local_cache.cache_load(entries_file)
+        return local_cache.local_load(entries_file)
 
     def list_remote(self, remote_url: str) -> list[Entry]:
         entries = shenanigans.get_entries_fast(_sanitize_url(remote_url),
                                                progress=lambda m: log.debug(m))
         return entries
 
-    def merge(self, remote: str, progress: Callable[[str], None] = None):
-        raise NotImplementedError
+    def merge(self, remote: str) -> list[Entry]:
+        entries = self.get_remote_entries(remote)
+        source = metadata.detect_source(self.get_remote(remote).url)
+
+        worktree_items = worktree_cache.worktree_load(self.working_dir)
+        missing_ids = set([e.id for e in entries]).difference(set([e.id for e in worktree_items]))
+
+        entries_to_download = [e for e in entries if e.id in missing_ids]
+        if entries_to_download:
+            shenanigans.download_entries(source, entries_to_download, max_concurrency=self._get_concurrency())
+        return entries_to_download
+
 
     def clone(self, url: str, destination_dir: str = None, origin: str = None):
         url = _sanitize_url(url)
@@ -294,3 +312,6 @@ class Mist:
 
         with open(self._get_active_remote_storage_file(), mode="w") as f:
             f.write(f"{name}\n")
+
+    def _get_concurrency(self) -> int:
+        return self.config.local.getint("core.concurrency", os.cpu_count())

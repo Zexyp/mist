@@ -17,8 +17,7 @@ genre =
 artist = 
 """
 
-def cache_save(file, entries: list[Entry]):
-    log.debug(f"saving {len(entries)} entries")
+def local_save(file, entries: list[Entry]):
     reader = ConfigReader(path=file)
     for e in entries:
         assert e.id is not None
@@ -31,7 +30,10 @@ def cache_save(file, entries: list[Entry]):
 
     reader.save()
 
-def cache_load(file) -> list[Entry]:
+    log.debug(f"saved {len(entries)} entries")
+
+
+def local_load(file) -> list[Entry]:
     reader = ConfigReader(path=file)
     reader.load()
     output = []

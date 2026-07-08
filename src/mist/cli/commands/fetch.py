@@ -23,6 +23,9 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
     parser.add_argument("--set-upstream", action="store_true")
     parser.add_argument("--progress", action="store_true") # force progress status, you want it, you will have spaghetti
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--prune", action="store_true")
+    parser.add_argument("--prune-tags", action="store_true")
 
     def func(args):
         if args.set_upstream:
@@ -35,7 +38,12 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
         progress = _report_progress if args.progress else None
 
         for r in remotes:
-            result = mist.fetch(r, tags=args.tags, progress=progress, dry_run=args.dry_run)
+            result = mist.fetch(r, tags=args.tags,
+                                progress=progress,
+                                dry_run=args.dry_run,
+                                force=args.force,
+                                prune=args.prune,
+                                prune_tags=args.prune_tags)
 
             if _DUMP_ENTRIES:
                 for e in result:

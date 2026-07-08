@@ -53,6 +53,15 @@ def detect_source(url) -> Source:
         case _:
             assert False, f"unknown source for '{parsed_url.netloc}'"
 
+def url_source(source: Source, item: str):
+    match source:
+        case Source.YOUTUBE:
+            return f"https://youtube.com/watch?v={item}"
+        case Source.SOUNDCLOUD:
+            return f"https://api-v2.soundcloud.com/tracks/{item}"
+        case _:
+            assert False, f"no template for source {source.name}"
+
 TTrack = TypeVar('TTrack')
 TArtist = TypeVar('TArtist')
 
@@ -178,7 +187,7 @@ def _build_registry():
 
     def youtube_to_soundcloud_matcher(data: Data):
         # yt links should be set but yt may have failed
-        found = data.yt_channel_id and [l for l in data.yt_channel_links if urlsplit(l).hostname == "soundcloud.com"]
+        found = data.yt_channel_links and [l for l in data.yt_channel_links if urlsplit(l).hostname == "soundcloud.com"]
         if not found:
             return None
         assert len(found) == 1, "which sc link do i use (╯°□°）╯︵ ┻━┻"

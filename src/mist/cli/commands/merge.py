@@ -8,7 +8,9 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
     parser.add_argument("remote", metavar="<remote>", nargs="?")
 
     def func(args):
-        raise NotImplementedError
+        remote = args.remote or mist.active_remote_name_get()
+        if not mist.merge(remote):
+            print("Already up to date.")
 
     parser.set_defaults(func=func, parser=parser)
     return parser
