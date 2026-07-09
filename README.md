@@ -3,7 +3,7 @@
 # mist
 **m**usic **i**ngestion & **s**torage **t**ool
 
-![](https://img.shields.io/badge/code%20style-freestyle-999.svg?style=flat-square)
+![](https://img.shields.io/badge/code%20style-freestyle-313131.svg?style=flat-square)
 ![](https://img.shields.io/badge/quality-ass-1fb311.svg?style=flat-square)
 ![](https://img.shields.io/badge/tests-passing%20eventually-ffd700?style=flat-square)
 </div>
