@@ -1,6 +1,7 @@
 import argparse
 import os
 
+from ..completors import RemoteCompleter
 from ... import Mist, MistError, log
 from .. import cli_utils
 
@@ -8,7 +9,7 @@ from .. import cli_utils
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
     parser = subparsers.add_parser("ls-remote")
-    parser.add_argument("repository", metavar="<repository>", nargs="?")
+    parser.add_argument("repository", metavar="<repository>", nargs="?").completer = RemoteCompleter(mist)
     parser.add_argument("-q", "--quiet", action="store_true")
 
     def func(args):

@@ -8,9 +8,10 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
     parser.add_argument("url", metavar="<url>")
     parser.add_argument("dir", metavar="<dir>", nargs='?')
     parser.add_argument("-o", "--origin", metavar="<name>")
+    parser.add_argument("--tags", action="store_true")
 
     def func(args):
-        mist.clone(args.url, destination_dir=args.dir, origin=args.origin)
+        mist.clone(args.url, destination_dir=args.dir, origin=args.origin, tags=args.tags)
 
     parser.set_defaults(func=func, parser=parser)
     return parser

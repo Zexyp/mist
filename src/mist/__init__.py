@@ -29,7 +29,7 @@ from . import log
 from . import config
 from .messages import *
 from . import shenanigans, metadata
-from .utils import url_strip_utm, url_strip_share_identifier
+from .utils import url_strip_utm, url_strip_share_identifier, sanitize_filename
 from .metadata import local as local_cache, worktree as worktree_cache
 
 def _find_repository_dir(start: str, soft: bool = True) -> str | None:
@@ -90,6 +90,8 @@ class Mist:
         self.working_dir = working_dir
         self.config.load()
 
+        log.configure(self.config.active)
+
         if found_repository := _find_repository_dir(working_dir):
             log.debug(f"found repository dir '{found_repository}'")
             self.set_repository_dir(found_repository)
@@ -109,13 +111,18 @@ class Mist:
         )
         self.config.load()
 
+        log.configure(self.config.active)
+
+        from importlib.metadata import version
+        if self.config.local.get("core.version") != version(_package_name):
+            log.warning("repository was created using a different Mist version")
+
         log.debug(f"repository dir '{self.repository_dir}'")
 
     def is_repository(self):
         return self.repository_dir is not None and os.path.isdir(self.repository_dir) and os.path.basename(self.repository_dir) == files.DIR_REPOSITORY
 
     def init(self, directory: str) -> str:
-        warnings.warn("init: repository reinitialization not implemented")
         if self.is_repository():
             raise NotImplementedError("repository reinitialization")
 
@@ -195,7 +202,10 @@ class Mist:
                                                progress=lambda m: log.debug(m))
         return entries
 
-    def merge(self, remote: str) -> list[Entry]:
+    def merge(self, remote: str, progress: Callable = None) -> list[Entry]:
+        if progress:
+            raise NotImplementedError("merge progress reporting not implemented")
+
         entries = self.get_remote_entries(remote)
         source = metadata.detect_source(self.get_remote(remote).url)
 
@@ -204,13 +214,22 @@ class Mist:
 
         entries_to_download = [e for e in entries if e.id in missing_ids]
         if entries_to_download:
-            shenanigans.download_entries(source, entries_to_download, max_concurrency=self._get_concurrency())
+            shenanigans.download_entries(source, entries_to_download,
+                                         destination_dir=self.working_dir,
+                                         max_concurrency=self._get_concurrency())
         return entries_to_download
 
 
-    def clone(self, url: str, destination_dir: str = None, origin: str = None):
+    def clone(self, url: str, destination_dir: str = None, origin: str = None, tags: bool = False):
         url = _sanitize_url(url)
-        raise NotImplementedError
+        destination_dir = destination_dir or sanitize_filename(shenanigans.get_playlist_title(url))
+
+        self.init(destination_dir)
+        self.set_working_dir(os.path.abspath(destination_dir))
+        remote = origin or self.config.active.get("clone.defaultRemoteName", "origin")
+        self.remote_add(remote, url)
+        self.fetch(remote, tags=tags)
+        self.merge(remote)
 
     def get_remotes(self) -> list[Remote]:
         self._assert_repository()

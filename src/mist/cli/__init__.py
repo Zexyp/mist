@@ -1,8 +1,15 @@
+#!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
 import argparse
 import configparser
 import os
 import sys
 import warnings
+
+try:
+    import argcomplete
+except ImportError:
+    argcomplete = None
 
 from .commands import merge
 from .. import Mist, _package_name
@@ -124,7 +131,8 @@ def _internal_run(arguments: list[str]):
     if args.mist_dir:
         mist.set_repository_dir(args.mist_dir)
 
-    log.configure(mist.config.active)
+    if argcomplete:
+        argcomplete.autocomplete(parser, always_complete_options=False)
 
     if hasattr(args, 'func'):
         args.func(args)

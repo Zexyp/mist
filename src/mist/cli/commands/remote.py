@@ -1,6 +1,7 @@
 import argparse
 import warnings
 
+from ..completors import RemoteCompleter
 from ... import Mist, log
 from .. import cli_utils
 
@@ -19,7 +20,7 @@ def build_parser_add(subparsers, mist: Mist):
 
 def build_parser_rename(subparsers, mist: Mist):
     parser = subparsers.add_parser("rename")
-    parser.add_argument("old", metavar="<old>")
+    parser.add_argument("old", metavar="<old>").completer = RemoteCompleter(mist)
     parser.add_argument("new", metavar="<new>")
 
     def func(args):
@@ -30,7 +31,7 @@ def build_parser_rename(subparsers, mist: Mist):
 
 def build_parser_remove(subparsers, mist: Mist):
     parser = subparsers.add_parser("remove", aliases=["rm"])
-    parser.add_argument("name", metavar="<name>")
+    parser.add_argument("name", metavar="<name>").completer = RemoteCompleter(mist)
 
     def func(args):
         mist.remote_remove(args.name)
@@ -40,7 +41,7 @@ def build_parser_remove(subparsers, mist: Mist):
 
 def build_parser_get_url(subparsers, mist: Mist):
     parser = subparsers.add_parser("get-url")
-    parser.add_argument("name", metavar="<name>")
+    parser.add_argument("name", metavar="<name>").completer = RemoteCompleter(mist)
 
     def func(args):
         print(mist.remote_get_url(args.name))
@@ -50,7 +51,7 @@ def build_parser_get_url(subparsers, mist: Mist):
 
 def build_parser_set_url(subparsers, mist: Mist):
     parser = subparsers.add_parser("set-url")
-    parser.add_argument("name", metavar="<name>")
+    parser.add_argument("name", metavar="<name>").completer = RemoteCompleter(mist)
     parser.add_argument("newurl", metavar="<newurl>")
 
     def func(args):

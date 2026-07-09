@@ -1,11 +1,13 @@
 import argparse
+
+from ..completors import RemoteCompleter
 from ... import Mist
 
 # TODO: -q --quiet, -v --verbose, --progress, --[no-]progress, --[no-]recurse-submodules[=<no-demand>], -n, --[no-]stat,
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
     parser = subparsers.add_parser("pull")
-    parser.add_argument("repository", metavar="<repository>", nargs="?")
+    parser.add_argument("repository", metavar="<repository>", nargs="?").completer = RemoteCompleter(mist)
     parser.add_argument("--set-upstream", action="store_true")
 
     def func(args):

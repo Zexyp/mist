@@ -1,4 +1,5 @@
 import concurrent.futures
+import os
 from dataclasses import dataclass
 from typing import Callable
 from urllib.parse import urlsplit
@@ -9,7 +10,7 @@ import re
 
 from .log import spawn_logger
 from .metadata import Source
-from .utils import strip_ansi
+from .utils import strip_ansi, sanitize_filename
 from . import Entry
 from . import log
 
@@ -175,7 +176,8 @@ def extract_flat_entry(e: dict) -> Entry:
 
     return entry
 
-def download_entries(platform: Source, entries: list[Entry], max_concurrency: int | None = None):
+def download_entries(platform: Source, entries: list[Entry], destination_dir: str, max_concurrency: int | None = None):
+    logger.debug(f"destination: {destination_dir}")
     if max_concurrency is not None:
         logger.debug(f"concurrency: {max_concurrency}")
 
@@ -186,13 +188,14 @@ def download_entries(platform: Source, entries: list[Entry], max_concurrency: in
 
         # use fixed name if available
         if item.title:
-            lopts["outtmpl"] = f"{item.title}.%(id)s.%(ext)s"
+            lopts["outtmpl"] = f"{sanitize_filename(item.title)}.%(id)s.%(ext)s"
+        lopts["outtmpl"] = os.path.join(destination_dir, lopts["outtmpl"])
 
         from . import metadata
         url = metadata.url_source(platform, item.id)
 
         try:
-            with YoutubeDL(opts) as ydl:
+            with YoutubeDL(lopts) as ydl:
                 ydl.download([url])
         except DownloadError as e:
             log.error(f"filed to download entry '{item.id}': {e}")

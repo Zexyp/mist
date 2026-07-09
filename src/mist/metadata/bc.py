@@ -30,7 +30,7 @@ f - fans
 
 search_session = requests.Session()
 
-@functools.lru_cache
+@functools.cache
 def _ensure_cookies():
     raise NotImplementedError
 

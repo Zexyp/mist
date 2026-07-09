@@ -1,5 +1,12 @@
-# Mist
-*Music Ingestion & Storage Tool*
+<div align="center">
+
+# mist
+**m**usic **i**ngestion & **s**torage **t**ool
+
+![](https://img.shields.io/badge/code%20style-freestyle-999.svg?style=flat-square)
+![](https://img.shields.io/badge/quality-ass-1fb311.svg?style=flat-square)
+![](https://img.shields.io/badge/tests-passing%20eventually-ffd700?style=flat-square)
+</div>
 
 ---
 
@@ -9,48 +16,42 @@ Mist typically is quicker to dissipate and can rapidly disappear with even sligh
 
 ---
 
+## Features
+- TODO
+
 ## Usage
 Would you mind if I use YapTeX for docs? :3
 
 ## Installation
-I'm not paid enough. I guess try this:
+I'm not paid enough. Try this:
 ```sh
 pip install .
 ```
 
-### FFmpeg
-FFmpeg is strongly recommended.
+> ### FFmpeg
+> FFmpeg is strongly recommended, otherwise you will have more than sound and the app will prolly crash.
+> 
+> #### Linux
+> ```sh
+> apt install ffmpeg
+> ```
+> 
+> #### Termux
+> I want Termix to run on my phone tho.
+> ```sh
+> pkg install ffmpeg
+> ```
+> 
+> #### Windows
+> You will have to go down the rabbit hole...
 
-#### Linux
-```sh
-apt install ffmpeg
-```
-
-#### Termux
-I want Termix to run on my phone tho.
-```sh
-pkg install ffmpeg
-```
-
-#### Windows
-You will have to go down the rabbit hole...
-
-### lxml
-
-#### Termux
-Dependencies for `lxml` (https://pypi.org/project/lxml/) module need to be installed.
-```sh
-pkg install libxml2 libxslt
-```
-
-### Optional modules
-To install all optional modules you can use supplied `optional-requirements.txt`:
-```sh
-pip install -r optional-requirements.txt
-```
-
-#### `colorama` (https://pypi.org/project/colorama/)
-Colorful logging.
+> ### lxml
+> 
+> #### Termux
+> Dependencies for `lxml` (https://pypi.org/project/lxml/) module need to be installed.
+> ```sh
+> pkg install libxml2 libxslt
+> ```
 
 ## Configuration
 - `core.editor`
@@ -59,14 +60,12 @@ Colorful logging.
 - `core.version`
 - `core.concurrency`
 
-
-- `remote.<name>.url`
-- `remote.<name>.skipFetchAll`
-
-
 - `clone.defaultRemoteName`
 
+- `remote.<name>.url`
+
 ### TODO:
+- `remote.<name>.skipFetchAll`
 - `remote.<name>.start`
 - `remote.<name>.end`
 - `remote.<name>.items`

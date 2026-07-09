@@ -1,3 +1,6 @@
+colorama
 requests
 yt-dlp
 lxml
+microdata
+mutagen

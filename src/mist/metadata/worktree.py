@@ -16,7 +16,9 @@ def worktree_load(directory: str) -> list[Entry]:
         entry = Entry()
         #filename = os.fsdecode(file)
         parts = file.rsplit(".", maxsplit=2)
-        assert len(parts) == 3
+        if len(parts) != 3:
+            logger.debug(f"skipping file '{file}'")
+            continue
 
         entry.id = parts[1]
         entry.title = parts[0]

@@ -2,6 +2,7 @@ import argparse
 import warnings
 from pprint import pformat
 
+from ..completors import RemoteCompleter
 from ... import Mist
 from .. import log
 
@@ -18,7 +19,7 @@ def _report_progress(msg):
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
     parser = subparsers.add_parser("fetch", description="Download objects from another repository")
-    parser.add_argument("remote", metavar="<remote>", nargs='*')
+    parser.add_argument("remote", metavar="<remote>", nargs='*').completer = RemoteCompleter(mist)
     parser.add_argument("--tags", action="store_true")
     parser.add_argument("--set-upstream", action="store_true")
     parser.add_argument("--progress", action="store_true") # force progress status, you want it, you will have spaghetti

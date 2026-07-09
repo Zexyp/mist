@@ -46,6 +46,13 @@ def indent_list(ls: list) -> str:
 def strip_ansi(text):
     return re.sub(r'\033\[[0-9;]*m', '', text)
 
+def sanitize_filename(name):
+    replacement_char = '_'
+    for ch in ['\\', '/', '*', '?', '"', '<', '>', '|']:
+        name = name.replace(ch, replacement_char)
+    assert name != "." and ".." not in name
+    return name
+
 class FileCache:
     def __init__(self,
                  serialize: Callable = None,

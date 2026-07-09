@@ -31,10 +31,6 @@ URL_API_GET_SEARCH_USERS = URL_HOST_API2 + "/search/users?q={query}&limit={limit
 URL_API_GET_SEARCH_TRACKS = URL_HOST_API2 + "/search/tracks?q={query}&limit={limit}&offset=0"
 
 URL_GET_USER_ID = URL_HOST + "/{canonical_id}"
-client_id_resources = [
-    URL_HOST_CDN + "/assets/55-9d8411a8.js",
-]
-URL_GET_CLIENT_ID = client_id_resources[0]
 
 URL_GET_SEARCH = URL_HOST + "/search?q={query}"
 URL_GET_SEARCH_PEOPLE = URL_HOST + "/search/people?q={query}"
@@ -44,24 +40,7 @@ URL_GET_SEARCH_SETS = URL_HOST + "/search/sets?q={query}"
 
 logger = spawn_logger(__name__)
 
-@functools.lru_cache
-def _prepare_client_id_old():
-    response = requests.get(URL_GET_CLIENT_ID)
-    assert_status_code(response)
-
-    # sanity check included xd
-    key_regex = r"[A-Za-z0-9]{32}"
-    var_regex = "client_id"
-    matches = re.finditer(rf'\"{var_regex}=({key_regex})\"|{var_regex}:\"({key_regex})\"', response.text)
-    ids = []
-    for m in matches:
-        ids.append(m.group(1) or m.group(2))
-
-    assert all(x == ids[0] for x in ids)
-
-    return ids[0]
-
-@functools.lru_cache
+@functools.cache
 def _prepare_client_id():
     response = requests.get(URL_HOST)
     assert_status_code(response)

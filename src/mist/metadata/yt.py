@@ -1,3 +1,4 @@
+import functools
 import json
 from http.client import RemoteDisconnected
 from pprint import pprint
@@ -24,6 +25,78 @@ URL_POST_YOUTUBE_MUSIC_TITLE = URL_HOST_YOUTUBE_MUSIC + "/youtubei/v1/player"
 URL_GET_YOUTUBE_VIDEO = URL_HOST_YOUTUBE + "/watch?v={video_id}"
 URL_GET_YOUTUBE_MUSIC_VIDEO = URL_HOST_YOUTUBE_MUSIC + "/watch?v={video_id}"
 
+yt_client = {
+    "clientFormFactor": "UNKNOWN_FORM_FACTOR",
+    "clientName": "WEB",
+    "clientVersion": "2.20250828.01.00",
+    "gl": "CZ",
+    "hl": "en"
+}
+
+ytm_client = {
+    "clientName": "WEB_REMIX", # holy shit we finally have him here
+    #
+    #
+    #                                                         .
+    #              XXX$XX$XXXXXXXX$$XXXXXXXXXXXXXXXXX                               XXxXX+Xxx
+    #               $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+    #               +$$$X$$$$$$$$$X$$$$$$$$$$$$$$$$$$$$                  x;          .
+    #  .             $$$$$$$$$$$$$$$$$$$X$$$$$$$$$$$$$$$           .     X xX                  .:  .
+    #                 $$$$$$$$$$$$$$$+         $$$$$$$$$+                       .                 . .
+    #                  $$$$$$$$$$$$  $ x$$$$$ :. ;$$$$$$$         $X&    + +.        $
+    #    .             $$$$$$$$$$$ X $:     x$$x   $$$$$$$      :.     +  :+    x  & +    X
+    #         XXX       X$$$$$$$$   $X. ;+ x$$$$$: $$$$$$$      x    .   :.:         X   .   .
+    #     .$          + .  $$$.   +;$X xxx  $  $$      $$$$       +; x ;  :        + $ :  .     .
+    #    X       ;$X        $$   $$.$          :xX$$ X $$$$     &    x   :+&x    + X $    +   &   .  .
+    #    X .x.            x$$$ X$$$$$$:     :  $$$$$ : $$$$X       +      ;      ;     : :;        .
+    #     :     $:     .$$$$$$$  $.  $ $ $ $ .$  $ $  +$$$$$    x  x     ;       x   ; :      $x&
+    #   .     X$$$$$X     $$$$$ $$$   :+ $x x $X+ Xx$ $$$$$$    x;X$          & +  . ; ;  .  x $
+    #                     $$$$$$  $$$$ +$$$$$$$$$$$   $$$$$$    $: :                 ; +  .          .
+    #    .                $$$$$$  $$;  XXxxxX$. .$$  $$$$$$$    ::         :$          ;          ;.:
+    #                       X$$$$$    x$$$$$$$$;    $$$$:       x    : ;  ;   :    . $  X x          .
+    #     .               $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$      .XXXX     x x .X ;  .&;               .
+    #   X                +$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$    X   .   +  ;+  & :     x  ;   : .   .
+    #     $X$$$$$$$$$$$$  $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$    : $$$$  X                        . . :
+    #     $    X$$$    $  $X   X$$$$    x    xX    +X    $$    +$  $X   X      X     X            : ..
+    #   X    X X$$$  $     :X$x     X$$  ;$$   X$$   $$$   x$$x   ;$$$   +X$$$    $$  ;
+    #    .   X $$$$  $  X$$  $$$$  .$$$ $$$$   $$$$$$$$$$$$$$$$    $$$     X$$$  $;   $     X  ;
+    #   .    X x$$$  ; X$$:  $$$   .$$$x       $$$   $$$$   $$$    $$$  X   X$$$$             & X  ..
+    #        X X$$$    $$$$+.    + .$$$  X$$$  $$$   $$$x  .$$$    $$$  $ x  $$$$  .        $.::&. ..;
+    #        $ X$$$    $$$X  $     .$$$  $$$$  $$$   $$$+  .$$$    $$$  XX  $ X$$$  .       x     . .
+    #      $   X$$$    ;$$$$  :$   ;$$$  $$$$  $$$   $$$x  .$$$    $$$    X$.  $$$$.   X
+    #   .  : :..   .:     X$;    X .;    $$$$  .                                       x             .
+    #   .   $ :++xx+;;$$$x   X$$$$$; +X$$$$$$$$:$$$$$xXX$  XXXX$X XX$X$x XXX.   XXX.            ..; :
+    #   .         .$$+$$$$$$$$$$$$$$$$$$$$$$$$$$$X  $                                :    : x      ..:
+    #            .$$$ $$$$$;;;.X$&; ;++ ;x :XX +x x X X;;            :      x      :.       :
+    #            $$$$ $$$$$    $ + $&  $ $  x$;.; x $  +X          &  $ ; x      X x+ +      + :
+    #   .       $$$$$:$$$$$$$$$$$$$$$$$$$$$$$$$$$$                 & ;X         +X .+:;     +;:+   ..:
+    #          $$$$$$$$$$$  . $$ + : x x  x:x$X  Xx:X X.X x        x  &      .  $& .; $   : +   . .
+    #          $$$$$$$$$$$& & $  & $ $ $ X  +$  +$  $ $  $           X&            $  : x     X$    .
+    #     .   $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$        .         & :& +        & x    x
+    #         XXxxxx++++:;:::.... $$$$$$$$$$$$$$.                  :             &    :        ;    .
+    #                             $$$$$$$$$$$$$$                                   :   .    X$ . .....
+    #                             $$$$$$$$$$$ $X X                 $    x x :+  :x     xx   :X     . .
+    #   ..                        $$$$$  $ X$:$; X.   X;.X         & .+ + X x  X &        : x$
+    #                             $$$$$$$$x$$$$$       .X+            x     x  :      :        +
+    #                             $$$$$$$$$$$$$$                                 & +.   . + X.     ..:
+    #                             $$$$; x $$$X X                            :.     & ..   + :;    . .
+    #   .                         $$$$$ :;   $ $x  .:   x             .   +        &      + X&:;    .$
+    # . .                         $$$$x  ; $xx  $ $:$ X x          x               .    :           XX
+    #                            .$$$$;     .  X+                  X  X     : :  ;    . ;;         $$$
+    #   ..                        $$$$$$$$$$$$$$$                  x  x   +      & &: + .       $$$$$X
+    #                             $$$$$$$$$$$$$$$$.                $ +  : ;   XX & &:     $$$$.X $$$$X
+    #                             $$$$$$$$$$$$$$$$                 x  . ;          &:     $$$$$  $$$$$
+    #                             $$X$$X$$$$X$$$$$X     X   $         $                   x$$;  $.$$$$
+    #                             $$$$$$$$$$$$$$$$$   : &&  & :X  x   $ $ x Xx  ; :       $$ :$$  $ $
+    #                             $XXXXXXX$$$$$$$XXX  :        $   .                      $$ $$$ +$.
+    #             $$X$$$$$$$$$$XX$$$XX$$$$$$X$$$$$XX$                                   +$$$$$$$$
+    #              $XX$$XXXXXxxXxXXXXXXXXXXxxXXXXXXXxx                                XXXX$$X
+    #
+    #
+    #
+    "clientVersion": "1.20260630.02.00-canary_control_1.20260630.02.00",
+}
+
 logger = spawn_logger(__name__)
 
 _DUMP_UNEXPECTED_DATA = True
@@ -34,73 +107,12 @@ def _parse_link(link) -> str:
     link = vm["link"]["content"]
     return link
 
-def _get_ytm_player_data(ident):
+@functools.cache
+def _get_ytm_player_data(video_id):
     json_data = {
-        "videoId": ident,
+        "videoId": video_id,
         "context": {
-            "client": {
-                "clientName": "WEB_REMIX", # holy shit we finally have him here
-                #
-                #
-                #                                                         .
-                #              XXX$XX$XXXXXXXX$$XXXXXXXXXXXXXXXXX                               XXxXX+Xxx
-                #               $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-                #               +$$$X$$$$$$$$$X$$$$$$$$$$$$$$$$$$$$                  x;          .
-                #  .             $$$$$$$$$$$$$$$$$$$X$$$$$$$$$$$$$$$           .     X xX                  .:  .
-                #                 $$$$$$$$$$$$$$$+         $$$$$$$$$+                       .                 . .
-                #                  $$$$$$$$$$$$  $ x$$$$$ :. ;$$$$$$$         $X&    + +.        $
-                #    .             $$$$$$$$$$$ X $:     x$$x   $$$$$$$      :.     +  :+    x  & +    X
-                #         XXX       X$$$$$$$$   $X. ;+ x$$$$$: $$$$$$$      x    .   :.:         X   .   .
-                #     .$          + .  $$$.   +;$X xxx  $  $$      $$$$       +; x ;  :        + $ :  .     .
-                #    X       ;$X        $$   $$.$          :xX$$ X $$$$     &    x   :+&x    + X $    +   &   .  .
-                #    X .x.            x$$$ X$$$$$$:     :  $$$$$ : $$$$X       +      ;      ;     : :;        .
-                #     :     $:     .$$$$$$$  $.  $ $ $ $ .$  $ $  +$$$$$    x  x     ;       x   ; :      $x&
-                #   .     X$$$$$X     $$$$$ $$$   :+ $x x $X+ Xx$ $$$$$$    x;X$          & +  . ; ;  .  x $
-                #                     $$$$$$  $$$$ +$$$$$$$$$$$   $$$$$$    $: :                 ; +  .          .
-                #    .                $$$$$$  $$;  XXxxxX$. .$$  $$$$$$$    ::         :$          ;          ;.:
-                #                       X$$$$$    x$$$$$$$$;    $$$$:       x    : ;  ;   :    . $  X x          .
-                #     .               $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$      .XXXX     x x .X ;  .&;               .
-                #   X                +$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$    X   .   +  ;+  & :     x  ;   : .   .
-                #     $X$$$$$$$$$$$$  $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$    : $$$$  X                        . . :
-                #     $    X$$$    $  $X   X$$$$    x    xX    +X    $$    +$  $X   X      X     X            : ..
-                #   X    X X$$$  $     :X$x     X$$  ;$$   X$$   $$$   x$$x   ;$$$   +X$$$    $$  ;
-                #    .   X $$$$  $  X$$  $$$$  .$$$ $$$$   $$$$$$$$$$$$$$$$    $$$     X$$$  $;   $     X  ;
-                #   .    X x$$$  ; X$$:  $$$   .$$$x       $$$   $$$$   $$$    $$$  X   X$$$$             & X  ..
-                #        X X$$$    $$$$+.    + .$$$  X$$$  $$$   $$$x  .$$$    $$$  $ x  $$$$  .        $.::&. ..;
-                #        $ X$$$    $$$X  $     .$$$  $$$$  $$$   $$$+  .$$$    $$$  XX  $ X$$$  .       x     . .
-                #      $   X$$$    ;$$$$  :$   ;$$$  $$$$  $$$   $$$x  .$$$    $$$    X$.  $$$$.   X
-                #   .  : :..   .:     X$;    X .;    $$$$  .                                       x             .
-                #   .   $ :++xx+;;$$$x   X$$$$$; +X$$$$$$$$:$$$$$xXX$  XXXX$X XX$X$x XXX.   XXX.            ..; :
-                #   .         .$$+$$$$$$$$$$$$$$$$$$$$$$$$$$$X  $                                :    : x      ..:
-                #            .$$$ $$$$$;;;.X$&; ;++ ;x :XX +x x X X;;            :      x      :.       :
-                #            $$$$ $$$$$    $ + $&  $ $  x$;.; x $  +X          &  $ ; x      X x+ +      + :
-                #   .       $$$$$:$$$$$$$$$$$$$$$$$$$$$$$$$$$$                 & ;X         +X .+:;     +;:+   ..:
-                #          $$$$$$$$$$$  . $$ + : x x  x:x$X  Xx:X X.X x        x  &      .  $& .; $   : +   . .
-                #          $$$$$$$$$$$& & $  & $ $ $ X  +$  +$  $ $  $           X&            $  : x     X$    .
-                #     .   $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$        .         & :& +        & x    x
-                #         XXxxxx++++:;:::.... $$$$$$$$$$$$$$.                  :             &    :        ;    .
-                #                             $$$$$$$$$$$$$$                                   :   .    X$ . .....
-                #                             $$$$$$$$$$$ $X X                 $    x x :+  :x     xx   :X     . .
-                #   ..                        $$$$$  $ X$:$; X.   X;.X         & .+ + X x  X &        : x$
-                #                             $$$$$$$$x$$$$$       .X+            x     x  :      :        +
-                #                             $$$$$$$$$$$$$$                                 & +.   . + X.     ..:
-                #                             $$$$; x $$$X X                            :.     & ..   + :;    . .
-                #   .                         $$$$$ :;   $ $x  .:   x             .   +        &      + X&:;    .$
-                # . .                         $$$$x  ; $xx  $ $:$ X x          x               .    :           XX
-                #                            .$$$$;     .  X+                  X  X     : :  ;    . ;;         $$$
-                #   ..                        $$$$$$$$$$$$$$$                  x  x   +      & &: + .       $$$$$X
-                #                             $$$$$$$$$$$$$$$$.                $ +  : ;   XX & &:     $$$$.X $$$$X
-                #                             $$$$$$$$$$$$$$$$                 x  . ;          &:     $$$$$  $$$$$
-                #                             $$X$$X$$$$X$$$$$X     X   $         $                   x$$;  $.$$$$
-                #                             $$$$$$$$$$$$$$$$$   : &&  & :X  x   $ $ x Xx  ; :       $$ :$$  $ $
-                #                             $XXXXXXX$$$$$$$XXX  :        $   .                      $$ $$$ +$.
-                #             $$X$$$$$$$$$$XX$$$XX$$$$$$X$$$$$XX$                                   +$$$$$$$$
-                #              $XX$$XXXXXxxXxXXXXXXXXXXxxXXXXXXXxx                                XXXX$$X
-                #
-                #
-                #
-                "clientVersion": "1.20260630.02.00-canary_control_1.20260630.02.00",
-            },
+            "client": ytm_client,
         },
     }
 
@@ -115,14 +127,16 @@ def _get_ytm_player_data(ident):
 
     return response_data
 
-def _get_yt_video_data(ident):
-    response = requests.get(URL_GET_YOUTUBE_VIDEO.format(video_id=ident))
+@functools.cache
+def _get_yt_video_data(video_id):
+    response = requests.get(URL_GET_YOUTUBE_VIDEO.format(video_id=video_id))
     assert_status_code(response)
 
     tree = etree.HTML(response.content)
     response_data = extract_script_data(tree, "window.WIZ_global_data = ")
     pprint(response_data)
 
+@functools.cache
 def _get_yt_channel_data(channel_id):
     try:
         response = requests.get(URL_GET_YOUTUBE_CHANNEL.format(channel_id=channel_id))
@@ -143,17 +157,9 @@ def _get_yt_channel_description_data(channel_id):
     continuation_command = json_path_get(continuation_item_renderer, "continuationEndpoint/continuationCommand")
     token = json_path_get(continuation_command, "token")
 
-    client = {
-        "clientFormFactor": "UNKNOWN_FORM_FACTOR",
-        "clientName": "WEB",
-        "clientVersion": "2.20250828.01.00",
-        "gl": "CZ",
-        "hl": "en"
-    }
-
     json_data = {
         "context": {
-            "client": client
+            "client": yt_client
         },
         "continuation": token
     }

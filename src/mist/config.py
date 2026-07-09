@@ -80,7 +80,7 @@ class ConfigReader:
     def unset(self, key: str, sub: bool = False):
         if not sub:
             del self.settings[key]
-        for k in self.settings:
+        for k in list(self.settings):
             if k.startswith(key):
                 del self.settings[k]
 
