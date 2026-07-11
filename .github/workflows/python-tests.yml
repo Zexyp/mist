@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    runs-on: debian-latest
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +20,9 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Install
+        run: bash scripts/apply.sh
 
       - name: Run tests
         run: python -m unittest
