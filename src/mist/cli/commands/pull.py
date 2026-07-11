@@ -9,6 +9,7 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
     parser = subparsers.add_parser("pull")
     parser.add_argument("repository", metavar="<repository>", nargs="?").completer = RemoteCompleter(mist)
     parser.add_argument("--set-upstream", action="store_true")
+    parser.add_argument("--tags", action="store_true")
 
     def func(args):
         if args.set_upstream:
@@ -19,7 +20,7 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
         dirty = False
 
         for r in remotes:
-            mist.fetch(r)
+            mist.fetch(r, tags=args.tags)
         for r in remotes:
             if mist.merge(r):
                 dirty = True
