@@ -129,12 +129,16 @@ def _get_ytm_player_data(video_id):
 
 @functools.cache
 def _get_yt_video_data(video_id):
-    response = requests.get(URL_GET_YOUTUBE_VIDEO.format(video_id=video_id))
+    try:
+        response = requests.get(URL_GET_YOUTUBE_VIDEO.format(video_id=video_id))
+    except RemoteDisconnected:
+        logger.error("getting throttled")
+        raise RateLimitHitError
     assert_status_code(response)
 
     tree = etree.HTML(response.content)
     response_data = extract_script_data(tree, "window.WIZ_global_data = ")
-    pprint(response_data)
+    return response_data
 
 @functools.cache
 def _get_yt_channel_data(channel_id):
@@ -244,6 +248,17 @@ class YouTubeConnector(MetadataConnector[YtVideoId, YtChannelId]):
         tree = etree.HTML(response.content)
         data = extract_script_data(tree, "var ytInitialPlayerResponse = ")
         return data["videoDetails"]["channelId"]
+
+    def get_track_artwork(self, track: YtVideoId) -> str:
+        # fallbacks:
+        # https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg
+        # .../sddefault.jpg
+        # .../mqdefault.jpg
+        # .../default.jpg
+        response_data = _get_ytm_player_data(track)
+        thumbnail = response_data["videoDetails"]["thumbnail"]["thumbnails"][0]
+        thumbnail_url = thumbnail["url"].rsplit("=", 1)[0]
+        return thumbnail_url
 
     def get_artist_name(self, artist: YtChannelId) -> str:
         raise NotSupported

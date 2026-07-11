@@ -21,6 +21,7 @@ class Entry:
     genre: str = None
     artist_links: list[tuple[str, str]] = None
     visited: set[str] = None
+    artwork: str = None
 
 from . import files
 from .config import ConfigReader, ConfigStack
@@ -59,6 +60,7 @@ def _merge_entry(original: Entry, new: Entry, prune_tags: bool, ignore_tags: boo
         original.name = new.name
         original.title = new.title
         original.genre = new.genre
+        original.artwork = new.artwork
 
     if not ignore_tags:
         if not prune_tags and set(original.tags or []).difference(set(new.tags or [])):

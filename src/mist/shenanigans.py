@@ -8,6 +8,8 @@ from yt_dlp import YoutubeDL, DownloadError
 from pprint import pprint, pformat
 import re
 
+from yt_dlp.postprocessor import PostProcessor
+
 from .log import spawn_logger
 from .metadata import Source
 from .utils import strip_ansi, sanitize_filename
@@ -19,6 +21,16 @@ _DUMP_DATA = False
 logger = spawn_logger(__name__)
 
 # TODO: suppress ytdlp warning
+
+class MetadataPostProcessor(PostProcessor):
+    def __init__(self, data: Entry):
+        super().__init__()
+        self.data = data
+
+    def run(self, information):
+        from . import tags
+        tags.apply_metadata_mp3(information["filepath"], self.data)
+        return [], information
 
 class BaseLogger:
     _PREFIX: str = "[ytdlp] "
@@ -100,8 +112,12 @@ options_download: dict = {
     "logger": BaseLogger(),
     "extract_audio": True,
     "format": "bestaudio",
-
+    "js_runtimes": {"node": {}},
     "outtmpl": "%(title)s.%(id)s.%(ext)s",
+    'postprocessors': [{
+        'key': 'FFmpegExtractAudio',
+        'preferredcodec': 'mp3',
+    }],
 }
 
 def get_playlist_title(url: str) -> str:
@@ -196,13 +212,11 @@ def download_entries(platform: Source, entries: list[Entry], destination_dir: st
 
         try:
             with YoutubeDL(lopts) as ydl:
+                ydl.add_post_processor(MetadataPostProcessor(item))
                 ydl.download([url])
         except DownloadError as e:
             log.error(f"filed to download entry '{item.id}': {e}")
             log.exception(e)
-
-
-        # TODO: tag
 
     output = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrency) as executor:

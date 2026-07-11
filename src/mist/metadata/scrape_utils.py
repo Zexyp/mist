@@ -38,8 +38,7 @@ def json_dict_of_key(dictionaries: list[dict], key) -> Any:
 
 def extract_script_data(tree, hook: str):
     results = tree.xpath(f"/html/body/script[starts-with(text(), '{hook}')]/text()")
-    assert len(results) == 1
-    json_str = results[0].removeprefix(hook).removesuffix(";").strip()
+    json_str = assert_single(results).removeprefix(hook).removesuffix(";").strip()
     return json.loads(json_str)
 
 def assert_status_code(response: requests.Response, code=200):

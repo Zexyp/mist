@@ -51,6 +51,7 @@ def _prepare_client_id():
     client_data = assert_single([i for i in response_data if i["hydratable"] == "apiClient"])["data"]
     return client_data["id"]
 
+@functools.cache
 def _wrap_request_with_client_id(url):
     params = {
         "client_id": _prepare_client_id(),
@@ -152,6 +153,11 @@ class SoundCloudConnector(MetadataConnector[SoundCloudTrackId, SoundCloudUserId]
 
     def get_artist(self, track: SoundCloudTrackId) -> SoundCloudUserId:
         raise NotSupported
+
+    def get_track_artwork(self, track: SoundCloudTrackId) -> str:
+        response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=track))
+        response_data = response.json()
+        return response_data["artwork_url"]
 
     def get_artist_name(self, artist: SoundCloudUserId) -> str:
         response = _wrap_request_with_client_id(URL_API_GET_TRACKS.format(track_id=artist))

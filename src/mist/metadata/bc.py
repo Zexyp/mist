@@ -1,4 +1,5 @@
 import functools
+import os.path
 from http.client import responses
 from urllib.parse import urlsplit, urljoin
 
@@ -121,6 +122,16 @@ class BandcampConnector(MetadataConnector[BandcampTrackUrl, BandcampArtistUrl]):
 
     def get_artist(self, track: BandcampTrackUrl) -> BandcampArtistUrl:
         raise NotSupported
+
+    def get_track_artwork(self, track: BandcampTrackUrl) -> str:
+        responses = requests.get(track)
+        assert_status_code(responses)
+
+        tree = etree.HTML(responses.content)
+        src = assert_single(tree.xpath("//*[@id='tralbumArt']//img/@src"))
+        splt = src.rsplit(".", maxsplit=1)
+        src = splt[0].rsplit("_", 1)[0] + "_0." + splt[1] # set lod to 0
+        return src
 
     def get_artist_name(self, artist: BandcampArtistUrl) -> str:
         raise NotSupported

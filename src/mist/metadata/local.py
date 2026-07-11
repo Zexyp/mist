@@ -26,6 +26,7 @@ def local_save(file, entries: list[Entry]):
         reader.set(f"{section_name}.name", e.name or "")
         reader.set(f"{section_name}.tags", json.dumps(list(set(e.tags or []))))
         reader.set(f"{section_name}.genra", e.genre or "")
+        reader.set(f"{section_name}.artwork", e.artwork or "")
         #reader.set(f"{section_name}.visited", json.dumps(list(set(e.visited or []))))
 
     reader.save()
@@ -44,6 +45,7 @@ def local_load(file) -> list[Entry]:
         e.name = reader.get(f"{section_name}.name")
         e.tags = json.loads(reader.get(f"{section_name}.tags", "[]"))
         e.genre = reader.get(f"{section_name}.genra")
+        e.artwork = reader.get(f"{section_name}.artwork")
         #e.tags = json.loads(reader.get(f"{section_name}.visited", "[]"))
         output.append(e)
     log.debug(f"loaded {len(output)} entries")

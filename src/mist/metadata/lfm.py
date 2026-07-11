@@ -27,6 +27,7 @@ URL_HOST = "https://www.last.fm"
 URL_GET_AUTHOR = URL_HOST + "/music/{artist}"
 URL_GET_SEARCH_TRACKS = URL_HOST + "/search/tracks"
 URL_TAGS_ENDPOINT = "+tags"
+URL_IMAGES_ENDPOINT = "+images"
 
 logger = spawn_logger(__name__)
 
@@ -83,6 +84,22 @@ def _extract_tags(lfm_url) -> list[str]:
 
     return tags
 
+@retry_on_autism
+def _extract_images(lfm_url) -> list[str]:
+    url = urlappend(lfm_url, URL_IMAGES_ENDPOINT)
+
+    response = requests.get(url)
+    _detect_server_autism(response)
+
+    tree = etree.HTML(response.content)
+    images = tree.xpath("//*[contains(@class, 'image-list')]//img/@src")
+    output = []
+    for i in images:
+        prts = i.rsplit("/", 2)
+        # remove middle part like "avatar170s" and remove extension
+        output.append(prts[0] + "/" + prts[2].rsplit(".", 1)[0])
+    return output
+
 # ezyzee
 
 LastFmTrackUrl = str
@@ -121,6 +138,10 @@ class LastFmConnector(MetadataConnector[LastFmTrackUrl, LastFmArtistUrl]):
         # microdata are ass, i really mean it
         recording = [i for i in items if repr(i.itemtype[0]) == "http://schema.org/MusicRecording"][0]
         return urljoin(URL_HOST, repr(recording.byArtist.url))
+
+    def get_track_artwork(self, track: LastFmTrackUrl) -> str:
+        images = _extract_images(track)
+        return images[0] if len(images) > 0 else None
 
     def get_artist_name(self, artist: LastFmArtistUrl) -> str:
         response = requests.get(artist)

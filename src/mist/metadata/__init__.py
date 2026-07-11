@@ -92,7 +92,8 @@ class MetadataConnector(Generic[TTrack, TArtist], ABC):
     def get_artist(self, track: TTrack) -> TArtist:
         pass
 
-    def get_track_artwork(self, track: TTrack) -> str | bytes:
+    @abstractmethod
+    def get_track_artwork(self, track: TTrack) -> str:
         pass
 
     # endregion
@@ -225,6 +226,7 @@ def enrich(data: Data, track: Entry, item,  using_connector: MetadataConnector) 
     track_title =  try_enrich(lambda: using_connector.get_track_title(item))
     track_tags = try_enrich(lambda: using_connector.get_track_tags(item))
     track_genre = try_enrich(lambda: using_connector.get_track_genre(item))
+    track_artwork = try_enrich(lambda: using_connector.get_track_artwork(item))
 
     artist = try_enrich(lambda: using_connector.get_artist(item))
     artist_name = None
@@ -260,6 +262,7 @@ def enrich(data: Data, track: Entry, item,  using_connector: MetadataConnector) 
             track.artist_links.extend(artist_links)
         else:
             track.artist_links = artist_links
+    track.artwork = track.artwork or track_artwork
 
     if clean:
         if not track.visited:
