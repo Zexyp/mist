@@ -1,9 +1,12 @@
 import argparse
+import logging
 import warnings
 
 from ..completors import RemoteCompleter
-from ... import Mist, log
+from ... import Mist
 from .. import cli_utils
+
+logger = logging.getLogger(__name__)
 
 def build_parser_add(subparsers, mist: Mist):
     parser = subparsers.add_parser("add")
@@ -11,7 +14,7 @@ def build_parser_add(subparsers, mist: Mist):
     parser.add_argument("url", metavar="<url>")
 
     def func(args):
-        log.debug(f"batu add {args.name} {args.url}")
+        logger.debug(f"batu add {args.name} {args.url}")
         mist.remote_add(args.name, args.url)
 
     parser.set_defaults(func=func, parser=parser)

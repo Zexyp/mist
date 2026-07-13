@@ -1,4 +1,5 @@
 import json
+import logging
 from pprint import pprint
 from urllib.parse import urljoin
 
@@ -8,7 +9,6 @@ from lxml import etree
 
 from . import MetadataConnector, Source, NotSupported
 from .scrape_utils import assert_status_code, urlappend, assert_single
-from ..log import spawn_logger
 
 class Autism(BaseException):
     pass
@@ -29,7 +29,7 @@ URL_GET_SEARCH_TRACKS = URL_HOST + "/search/tracks"
 URL_TAGS_ENDPOINT = "+tags"
 URL_IMAGES_ENDPOINT = "+images"
 
-logger = spawn_logger(__name__)
+logger = logging.getLogger(__name__)
 
 def _detect_server_autism(response):
     if response.status_code == 600:

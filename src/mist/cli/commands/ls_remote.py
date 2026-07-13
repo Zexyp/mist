@@ -1,11 +1,14 @@
 import argparse
+import logging
 import os
 
 from ..completors import RemoteCompleter
-from ... import Mist, MistError, log
+from ... import Mist, MistError
 from .. import cli_utils
 
-# TODO: -q --quiet, --[no-]sort, -o --[no-]server-option <server-specific>
+# TODO: -q --quiet, --[no-]sort, -o --[no-]server-option <server-specific>, --[no-]tags
+
+logger = logging.getLogger(__name__)
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
     parser = subparsers.add_parser("ls-remote")
@@ -22,7 +25,7 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
         else:
             remote_name = mist.active_remote_name_get()
             if not remote_name:
-                log.fatal("No remote configured to list from.")
+                logger.fatal("No remote configured to list from.")
                 parser.exit(1)
 
             remote = mist.get_remote(remote_name)
@@ -30,8 +33,8 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
                 url = remote.url
 
         if url is None:
-            log.fatal(f"'{args.repository}' does not appear to be a mist repository")
-            log.fatal(
+            logger.fatal(f"'{args.repository}' does not appear to be a mist repository")
+            logger.fatal(
                 "Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.")
             parser.exit(1)
 

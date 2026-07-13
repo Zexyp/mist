@@ -6,25 +6,21 @@ import os
 import sys
 import warnings
 
+from ..log import announce_optional_module_error
+
 try:
     import argcomplete
-except ImportError:
+except ImportError as e:
     argcomplete = None
+    announce_optional_module_error(e)
 
 from .commands import merge
 from .. import Mist, _package_name
 from ..errors import MistError
-from .. import log
 from .. import config
 from ..messages import *
 
 # TODO: pad to multiples
-
-def _parse_configuration_param(arg: str) -> tuple[str, str]:
-    SPLIT_BY = "="
-    assert SPLIT_BY in arg
-    parts = arg.split(SPLIT_BY, 1)
-    return parts[0].strip(), parts[1].strip()
 
 # TODO: --config-env=<name>=<envvar>, docs paths, -p --paginate, -P --no-pager, --work-tree=<path>, --no-lazy-fetch, --no-advice,
 # TODO: commands
@@ -82,13 +78,20 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
         "ls-files": ls_files.build_parser(subparsers, mist),
     }
 
+    def parse_configuration_param(arg: str) -> tuple[str, str]:
+        SPLIT_BY = "="
+        if  SPLIT_BY not in arg:
+            parser.error("malformed configuration arg")
+        parts = arg.split(SPLIT_BY, 1)
+        return parts[0].strip(), parts[1].strip()
+
     from importlib.metadata import version
     parser.add_argument("-v", "--version", action="version", version=f"Mist {version(_package_name)}")
     help_group = parser.add_mutually_exclusive_group(required=False)
     help_group.add_argument("-h", action=HelpAction, nargs=0, help="short help", commands=command_parsers)
     help_group.add_argument("--help", action=HelpAction, nargs=0, help="extensive help", commands=command_parsers)
     parser.add_argument("-C", metavar="<path>")
-    parser.add_argument("-c", metavar="<name>=<value>", action="append", type=_parse_configuration_param)
+    parser.add_argument("-c", metavar="<name>=<value>", action="append", type=parse_configuration_param)
     parser.add_argument("--mist-dir", metavar="<path>", default=None)
 
     #parser_checkout = subparsers.add_parser("checkout")
@@ -110,7 +113,8 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
     parser.set_defaults(parser=parser)
     return parser
 
-def _internal_run(arguments: list[str]):
+
+def run(arguments: list[str]):
     mist = Mist()
     parser = build_parser(mist)
 
@@ -145,27 +149,3 @@ def _internal_run(arguments: list[str]):
 
     if previous_dir:
         os.chdir(previous_dir)
-
-def run(arguments: list[str]) -> int:
-    # returns exit code
-    try:
-        with warnings.catch_warnings(record=True) as recorded_warnings:
-            _internal_run(arguments)
-    except MistError as e:
-        log.error(str(e))
-        log.exception(e)
-        return 1
-    except NotImplementedError as e:
-        log.fatal(f"{type(e).__name__}: {str(e)}")
-        log.fatal("lazy fuck detected")
-        log.exception(e)
-        return 1
-    except Exception as e:
-        log.fatal(f"{type(e).__name__}: {str(e)}")
-        log.fatal("unrecoverable error")
-        log.exception(e)
-        return 1
-    finally:
-        for w in recorded_warnings:
-            log.warning(w.message)
-    return 0

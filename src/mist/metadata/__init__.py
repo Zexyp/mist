@@ -1,3 +1,4 @@
+import logging
 import os
 from enum import Enum, auto
 from pprint import pprint, pformat
@@ -8,34 +9,21 @@ from dataclasses import dataclass
 import inspect
 
 from .. import Entry
-from ..log import spawn_logger
-from ..utils import indent_list
+from ..utils import indent_list, MistEnum
 
-logger = spawn_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # TODO: match user/artist
 
 class NotSupported(Exception):
     pass
 
-class Source(Enum):
+class Source(MistEnum):
     LOCAL = auto()
     YOUTUBE = auto()
     SOUNDCLOUD = auto()
     LASTFM = auto()
     BANDCAMP = auto()
-
-    # MistEnum:
-    @property
-    def name(self):
-        return self._name_.lower()
-
-    @classmethod
-    def _missing_(cls, value):
-        for member in cls:
-            if member.name.lower() == str(value).lower():
-                return member
-        return None
 
 def detect_source(url) -> Source:
     parsed_url = urlsplit(url)

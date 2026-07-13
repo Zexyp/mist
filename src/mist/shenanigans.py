@@ -1,4 +1,5 @@
 import concurrent.futures
+import logging
 import os
 from dataclasses import dataclass
 from typing import Callable
@@ -10,15 +11,13 @@ import re
 
 from yt_dlp.postprocessor import PostProcessor
 
-from .log import spawn_logger
 from .metadata import Source
 from .utils import strip_ansi, sanitize_filename
-from . import Entry
-from . import log
+from . import Entry, MistError
 
 _DUMP_DATA = False
 
-logger = spawn_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # TODO: suppress ytdlp warning
 
@@ -29,7 +28,7 @@ class MetadataPostProcessor(PostProcessor):
 
     def run(self, information):
         from . import tags
-        tags.apply_metadata_mp3(information["filepath"], self.data)
+        tags.apply(information["filepath"], self.data)
         return [], information
 
 class BaseLogger:
@@ -122,6 +121,7 @@ options_download: dict = {
 
 def get_playlist_title(url: str) -> str:
     try:
+        info = None
         with YoutubeDL(options_playlist_title) as ydl:
             info = ydl.extract_info(url, download=False)
     except DownloadError as e:
@@ -164,10 +164,14 @@ def get_entries_fast(url: str, progress: Callable[[str], None] = None) -> list[E
     opts["progress_hooks"] = [_emtpy_hook],
 
     try:
+        info = None
         with YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
     except DownloadError as e:
         print(e)
+
+    if not info or 'entries' not in info:
+        raise MistError("unable to use entries")
 
     assert info["_type"] == "playlist"
     if _DUMP_DATA:
@@ -215,8 +219,8 @@ def download_entries(platform: Source, entries: list[Entry], destination_dir: st
                 ydl.add_post_processor(MetadataPostProcessor(item))
                 ydl.download([url])
         except DownloadError as e:
-            log.error(f"filed to download entry '{item.id}': {e}")
-            log.exception(e)
+            logger.error(f"filed to download entry '{item.id}': {e}")
+            logger.debug(e, exc_info=True)
 
     output = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrency) as executor:

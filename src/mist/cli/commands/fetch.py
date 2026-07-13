@@ -1,14 +1,16 @@
 import argparse
+import logging
 import warnings
 from pprint import pformat
 
 from ..completors import RemoteCompleter
 from ... import Mist
-from .. import log
 
 # TODO: --[no-]all, --negotiate-only, -k --keep, --multiple, -p --prune, -P --prune-tags, -n --no-tags, -t --tags, --[no-]recurse-submodules, -j --jobs, -q --quiet, -v --verbose, --progress, -o --server-option, --[no-]stdin
 
 _DUMP_ENTRIES = False
+
+logger = logging.getLogger(__name__)
 
 def _report_progress(msg):
     raise NotImplementedError
@@ -48,7 +50,7 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
 
             if _DUMP_ENTRIES:
                 for e in result:
-                    log.debug(e)
+                    logger.debug(e)
 
     parser.set_defaults(func=func, parser=parser)
     return parser

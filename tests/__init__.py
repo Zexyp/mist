@@ -1,12 +1,19 @@
 import os
 import tempfile
 import unittest
-import colorama
-colorama.init()
+try:
+    import colorama
+    colorama.init()
+except ImportError as e:
+    colorama = None
+
 
 _wrapped_run = unittest.TextTestRunner.run
 def _run_wrapper(*args, **kwargs):
     result = _wrapped_run(*args, **kwargs)
+    if not colorama:
+        return result
+
     if result.wasSuccessful():
         print(colorama.Fore.GREEN + "yippee" + colorama.Fore.RESET)
     else:

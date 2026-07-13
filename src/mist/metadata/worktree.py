@@ -1,9 +1,9 @@
+import logging
 import os
 
 from .. import Entry
-from ..log import spawn_logger
 
-logger = spawn_logger(__name__)
+logger = logging.getLogger(__name__)
 
 def worktree_load(directory: str) -> list[Entry]:
     logger.debug("loading working tree")

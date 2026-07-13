@@ -1,7 +1,8 @@
 import json
+import logging
 from dataclasses import dataclass
 
-from .. import ConfigReader, Entry, log
+from .. import ConfigReader, Entry
 
 """
 [artist "id"]
@@ -17,6 +18,8 @@ genre =
 artist = 
 """
 
+logger = logging.getLogger(__name__)
+
 def local_save(file, entries: list[Entry]):
     reader = ConfigReader(path=file)
     for e in entries:
@@ -31,7 +34,7 @@ def local_save(file, entries: list[Entry]):
 
     reader.save()
 
-    log.debug(f"saved {len(entries)} entries")
+    logger.debug(f"saved {len(entries)} entries")
 
 
 def local_load(file) -> list[Entry]:
@@ -46,7 +49,7 @@ def local_load(file) -> list[Entry]:
         e.tags = json.loads(reader.get(f"{section_name}.tags", "[]"))
         e.genre = reader.get(f"{section_name}.genra")
         e.artwork = reader.get(f"{section_name}.artwork")
-        #e.tags = json.loads(reader.get(f"{section_name}.visited", "[]"))
+        #e.visited = json.loads(reader.get(f"{section_name}.visited", "[]"))
         output.append(e)
-    log.debug(f"loaded {len(output)} entries")
+    logger.debug(f"loaded {len(output)} entries")
     return output

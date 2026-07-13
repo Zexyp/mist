@@ -1,16 +1,16 @@
 import configparser
+import logging
 import os
 import pathlib
 from typing import Callable
 
 from . import files
-from .log import spawn_logger
 
 # todo: from collections import OrderedDict
 
 _SEPARATOR = "."
 
-logger = spawn_logger(__name__)
+logger = logging.getLogger(__name__)
 
 """not so reader after all"""
 class ConfigReader:

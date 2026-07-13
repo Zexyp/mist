@@ -1,5 +1,6 @@
 import functools
 import json
+import logging
 from http.client import RemoteDisconnected
 from pprint import pprint
 from typing import Any
@@ -9,7 +10,6 @@ import requests
 from lxml import etree
 
 from . import MetadataConnector, Source, NotSupported
-from ..log import spawn_logger
 from .scrape_utils import json_dict_of_key, json_path_get, extract_script_data, RateLimitHitError, assert_status_code
 
 # todo: locale
@@ -97,7 +97,7 @@ ytm_client = {
     "clientVersion": "1.20260630.02.00-canary_control_1.20260630.02.00",
 }
 
-logger = spawn_logger(__name__)
+logger = logging.getLogger(__name__)
 
 _DUMP_UNEXPECTED_DATA = True
 

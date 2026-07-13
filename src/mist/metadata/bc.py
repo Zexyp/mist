@@ -1,4 +1,5 @@
 import functools
+import logging
 import os.path
 from http.client import responses
 from urllib.parse import urlsplit, urljoin
@@ -10,9 +11,8 @@ from lxml import etree
 from . import MetadataConnector, NotSupported, Source
 from .scrape_utils import assert_status_code, assert_single
 from .. import Entry
-from ..log import spawn_logger
 
-logger = spawn_logger(__name__)
+logger = logging.getLogger(__name__)
 
 URL_HOST = "https://bandcamp.com"
 

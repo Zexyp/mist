@@ -1,4 +1,5 @@
 import functools
+import logging
 import os
 import shlex
 from pprint import pprint
@@ -11,7 +12,6 @@ from lxml import etree
 
 from . import MetadataConnector, Source, NotSupported
 from .scrape_utils import extract_script_data, json_dict_of_key, assert_status_code, assert_single
-from ..log import spawn_logger
 
 # todo: locale
 
@@ -38,7 +38,7 @@ URL_GET_SEARCH_SOUNDS = URL_HOST + "/search/sounds?q={query}"
 URL_GET_SEARCH_ALBUMS = URL_HOST + "/search/albums?q={query}"
 URL_GET_SEARCH_SETS = URL_HOST + "/search/sets?q={query}"
 
-logger = spawn_logger(__name__)
+logger = logging.getLogger(__name__)
 
 @functools.cache
 def _prepare_client_id():

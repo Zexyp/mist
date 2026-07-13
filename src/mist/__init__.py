@@ -1,11 +1,13 @@
 # mist - another stupid content tracker
-
+import logging
 import os
+import sys
 import warnings
 from dataclasses import dataclass
 from pprint import pprint
 
 _package_name = __package__
+logger = logging.getLogger(__name__)
 # entry can be just a remote snapshot
 # or a local file description
 # or be full of metadata
@@ -26,7 +28,6 @@ class Entry:
 from . import files
 from .config import ConfigReader, ConfigStack
 from .errors import MistError
-from . import log
 from . import config
 from .messages import *
 from . import shenanigans, metadata
@@ -75,6 +76,26 @@ def _merge_entry(original: Entry, new: Entry, prune_tags: bool, ignore_tags: boo
 
     return original
 
+def _configure_logger(cfg: ConfigReader):
+    # TODO: config file
+    debug = cfg.getbool("core.debug", False)
+    from . import log
+
+    match cfg.get("core.color", "auto"):
+        case "off":
+            log.deinit_colors()
+        case "force":
+            log.init_colors()
+        case "auto":
+            if sys.stdin.isatty():
+                log.init_colors()
+        case _:
+            assert False
+
+    logger.setLevel(logging.DEBUG if debug else logging.WARNING)
+    logger.debug("reconfigured loggers")
+
+
 @dataclass
 class Remote:
     name: str = None
@@ -92,13 +113,13 @@ class Mist:
         self.working_dir = working_dir
         self.config.load()
 
-        log.configure(self.config.active)
+        _configure_logger(self.config.active)
 
         if found_repository := _find_repository_dir(working_dir):
-            log.debug(f"found repository dir '{found_repository}'")
+            logger.debug(f"found repository dir '{found_repository}'")
             self.set_repository_dir(found_repository)
 
-        log.debug(f"working dir '{self.working_dir}'")
+        logger.debug(f"working dir '{self.working_dir}'")
 
     def set_repository_dir(self, repository_dir):
         assert os.path.isdir(repository_dir)
@@ -113,13 +134,13 @@ class Mist:
         )
         self.config.load()
 
-        log.configure(self.config.active)
+        _configure_logger(self.config.active)
 
         from importlib.metadata import version
         if self.config.local.get("core.version") != version(_package_name):
-            log.warning("repository was created using a different Mist version")
+            logger.warning("repository was created using a different Mist version")
 
-        log.debug(f"repository dir '{self.repository_dir}'")
+        logger.debug(f"repository dir '{self.repository_dir}'")
 
     def is_repository(self):
         return self.repository_dir is not None and os.path.isdir(self.repository_dir) and os.path.basename(self.repository_dir) == files.DIR_REPOSITORY
@@ -155,7 +176,7 @@ class Mist:
         """returns a list of locally available entries"""
         self._assert_remote(remote)
 
-        log.debug(f"fetch {force=}, {prune=}, {prune_tags=}")
+        logger.debug(f"fetch {force=}, {prune=}, {prune_tags=}")
 
         section_name = self._remote_section_name(remote)
 
@@ -201,7 +222,7 @@ class Mist:
 
     def list_remote(self, remote_url: str) -> list[Entry]:
         entries = shenanigans.get_entries_fast(_sanitize_url(remote_url),
-                                               progress=lambda m: log.debug(m))
+                                               progress=lambda m: logger.debug(m))
         return entries
 
     def merge(self, remote: str, progress: Callable = None) -> list[Entry]:
