@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import inspect
 
+from .scrape_utils import assert_single
 from .. import Entry
 from ..utils import indent_list, MistEnum
 
@@ -171,17 +172,19 @@ def _build_registry():
 
     def lastfm_to_soundcloud_matcher(data: Data):
         # lfm links should be set
-        found = [l for l in data.lfm_artist_links if urlsplit(l).hostname == "soundcloud.com"]
+        found = data.lfm_artist_links and [l for l in data.lfm_artist_links if urlsplit(l).hostname == "soundcloud.com"]
         if not found:
             return None
+
         # this line is fucking with my PyCharm 2025.2.1.1, erm *was*
-        return sc.match_track_by_artist(data.lfm_title, found[0])
+        return sc.match_track_by_artist(data.lfm_title, assert_single(found))
 
     def youtube_to_soundcloud_matcher(data: Data):
         # yt links should be set but yt may have failed
         found = data.yt_channel_links and [l for l in data.yt_channel_links if urlsplit(l).hostname == "soundcloud.com"]
         if not found:
             return None
+
         assert len(found) == 1, "which sc link do i use (╯°□°）╯︵ ┻━┻"
         return sc.match_track_by_artist(data.yt_title, found[0])
 
@@ -278,6 +281,8 @@ def obtain(source: Source, entry: str):
 
         connector = connectors.get_node(source)
         logger.debug(f"visiting {source.name}")
+
+        # some crucial data are generated during this step, so we cannot use Entry.visited to avoid redoing work
         data = enrich(data, track, item, connector)
 
         visited.add((source, item))

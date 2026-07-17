@@ -32,7 +32,7 @@ URL_IMAGES_ENDPOINT = "+images"
 logger = logging.getLogger(__name__)
 
 def _detect_server_autism(response):
-    if response.status_code == 600:
+    if response.status_code in [502, 600]:
         raise Autism
     assert_status_code(response)
 
@@ -89,6 +89,8 @@ def _extract_images(lfm_url) -> list[str]:
     url = urlappend(lfm_url, URL_IMAGES_ENDPOINT)
 
     response = requests.get(url)
+    if response.status_code == 404:
+        return None
     _detect_server_autism(response)
 
     tree = etree.HTML(response.content)
@@ -108,17 +110,19 @@ LastFmArtistUrl = str
 class LastFmConnector(MetadataConnector[LastFmTrackUrl, LastFmArtistUrl]):
     source = Source.LASTFM
 
+    @retry_on_autism
     def get_track_name(self, track: LastFmTrackUrl) -> str:
         response = requests.get(track)
-        assert_status_code(response)
+        _detect_server_autism(response)
 
         items = microdata.get_items(response.content)
         recording = [i for i in items if repr(i.itemtype[0]) == "http://schema.org/MusicRecording"][0]
         return recording.name
 
+    @retry_on_autism
     def get_track_title(self, track: LastFmTrackUrl) -> str:
         response = requests.get(track)
-        assert_status_code(response)
+        _detect_server_autism(response)
 
         items = microdata.get_items(response.content)
         recording = [i for i in items if repr(i.itemtype[0]) == "http://schema.org/MusicRecording"][0]
@@ -130,9 +134,10 @@ class LastFmConnector(MetadataConnector[LastFmTrackUrl, LastFmArtistUrl]):
     def get_track_genre(self, track: LastFmTrackUrl) -> str:
         raise NotSupported
 
+    @retry_on_autism
     def get_artist(self, track: LastFmTrackUrl) -> LastFmArtistUrl:
         response = requests.get(track)
-        assert_status_code(response)
+        _detect_server_autism(response)
 
         items = microdata.get_items(response.content)
         # microdata are ass, i really mean it
@@ -141,23 +146,27 @@ class LastFmConnector(MetadataConnector[LastFmTrackUrl, LastFmArtistUrl]):
 
     def get_track_artwork(self, track: LastFmTrackUrl) -> str:
         images = _extract_images(track)
-        return images[0] if len(images) > 0 else None
+        return images[0] if images else None
 
+    @retry_on_autism
     def get_artist_name(self, artist: LastFmArtistUrl) -> str:
         response = requests.get(artist)
-        assert_status_code(response)
+        _detect_server_autism(response)
 
         items = microdata.get_items(response.content)
         # microdata are ass
         group = [i for i in items if repr(i.itemtype[0]) == "http://schema.org/MusicGroup"][0]
         return group.name
 
+    @retry_on_autism
     def get_artist_links(self, artist: LastFmArtistUrl) -> list[str]:
         response = requests.get(artist)
-        assert_status_code(response)
+        _detect_server_autism(response)
 
         tree = etree.HTML(response.content)
-        links = tree.xpath("//h3[text()='External Links']/../ul/li/a/@href")
+        external_links = tree.xpath("//h3[text()='External Links']")
+        links = external_links and external_links[0].xpath("../ul/li/a/@href")
+
         return links
 
     def get_artist_tags(self, artist: LastFmArtistUrl) -> list[str]:

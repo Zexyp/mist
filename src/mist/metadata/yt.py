@@ -13,6 +13,7 @@ from . import MetadataConnector, Source, NotSupported
 from .scrape_utils import json_dict_of_key, json_path_get, extract_script_data, RateLimitHitError, assert_status_code
 
 # todo: locale
+# TODO: correct yt video data and ytm video data usage
 
 URL_HOST_YOUTUBE = "https://www.youtube.com"
 URL_HOST_YOUTUBE_MUSIC = "https://music.youtube.com"

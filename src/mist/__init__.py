@@ -4,7 +4,9 @@ import os
 import sys
 import warnings
 from dataclasses import dataclass
-from pprint import pprint
+from pprint import pprint, pformat
+from unittest import case
+from zoneinfo import available_timezones
 
 _package_name = __package__
 logger = logging.getLogger(__name__)
@@ -14,6 +16,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Entry:
     id: str = None
+    index: int = None
     title: str = None
     url: str = None
     name: str = None
@@ -33,6 +36,8 @@ from .messages import *
 from . import shenanigans, metadata
 from .utils import url_strip_utm, url_strip_share_identifier, sanitize_filename
 from .metadata import local as local_cache, worktree as worktree_cache
+
+# TODO: bracketeer
 
 def _find_repository_dir(start: str, soft: bool = True) -> str | None:
     assert os.path.isabs(start)
@@ -95,6 +100,61 @@ def _configure_logger(cfg: ConfigReader):
     logger.setLevel(logging.DEBUG if debug else logging.WARNING)
     logger.debug("reconfigured loggers")
 
+def _parse_image_options(cfg: dict[str, str]) -> dict:
+    result = {}
+    if "size" in cfg:
+        parts = tuple(map(int, [p.strip() for p in cfg["size"].split("x")]))
+        assert len(parts) == 2
+        result["size"] = parts
+    if "format" in cfg:
+        fmt = cfg["format"].lower()
+        fmt_details = None
+        if "@" in fmt:
+            fmt, fmt_details = fmt.split("@", maxsplit=1)
+        result["format"] = fmt
+        match fmt:
+            case "jpeg" | "jpg" | "jfif":
+                available_bits = {
+                    "l": "L",
+                    "rgb": "RGB",
+                }
+            case "png":
+                available_bits = {
+                    "i": "P",
+                    "ia": "PA",
+                    "l": "L",
+                    "la": "LA",
+                    "rgb": "RGB",
+                    "rgba": "RGBA",
+                }
+            case "none":
+                pass
+            case _:
+                assert False
+
+        result["format"] = fmt
+        if fmt != "none" and fmt_details:
+            fmt_details_parts = [p.strip() for p in fmt_details.split(";")]
+            while fmt_details_parts:
+                part = fmt_details_parts.pop(0)
+                match part:
+                    case part if part in available_bits:
+                        result["convert"] = available_bits[part]
+                    case part if part.endswith("%") or part.startswith("cl"):
+                        result["compression"] = int(part.removeprefix("cl").removesuffix("%"))
+                    case part if part in ["4:0:0", "4:2:0", "4:2:2", "4:4:4"]:
+                        result["subsampling"] = part
+                    case _:
+                        assert False
+    if "adjustment" in cfg:
+        adjustment = cfg["adjustment"].lower()
+        assert adjustment in ("zoom", "scaled", "crop", "stretch")
+        result["adjustment"] = adjustment
+    else:
+        # default adjustment
+        result["adjustment"] = "scaled"
+
+    return result
 
 @dataclass
 class Remote:
@@ -147,7 +207,7 @@ class Mist:
 
     def init(self, directory: str) -> str:
         if self.is_repository():
-            raise NotImplementedError("repository reinitialization")
+            raise NotImplementedError("init: repository reinitialization")
 
         target_dir = os.path.join(os.path.abspath(directory), files.DIR_REPOSITORY)
         os.makedirs(target_dir)
@@ -225,9 +285,11 @@ class Mist:
                                                progress=lambda m: logger.debug(m))
         return entries
 
-    def merge(self, remote: str, progress: Callable = None) -> list[Entry]:
+    def merge(self, remote: str, progress: Callable = None, strategy: str = None) -> list[Entry]:
         if progress:
-            raise NotImplementedError("merge progress reporting not implemented")
+            raise NotImplementedError("merge: progress reporting not implemented")
+        if strategy:
+            raise NotImplementedError("merge: strategy not implemented")
 
         entries = self.get_remote_entries(remote)
         source = metadata.detect_source(self.get_remote(remote).url)
@@ -235,11 +297,15 @@ class Mist:
         worktree_items = worktree_cache.worktree_load(self.working_dir)
         missing_ids = set([e.id for e in entries]).difference(set([e.id for e in worktree_items]))
 
+        image_options = _parse_image_options(self.config.active.getsub("image."))
+        logger.debug("image options:\n" + pformat(image_options))
+
         entries_to_download = [e for e in entries if e.id in missing_ids]
         if entries_to_download:
             shenanigans.download_entries(source, entries_to_download,
                                          destination_dir=self.working_dir,
-                                         max_concurrency=self._get_concurrency())
+                                         max_concurrency=self._get_concurrency(),
+                                         image_options=image_options)
         return entries_to_download
 
 

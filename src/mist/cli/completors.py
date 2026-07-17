@@ -9,7 +9,7 @@ class RemoteCompleter(MistCompleter):
     def __call__(self, **kwargs):
         if self.mist.is_repository():
             return [i.name for i in self.mist.get_remotes()]
-        return None
+        return []
 
 class HelpCompleter(object):
     def __init__(self):

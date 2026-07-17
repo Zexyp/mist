@@ -13,7 +13,10 @@ from yt_dlp.postprocessor import PostProcessor
 
 from .metadata import Source
 from .utils import strip_ansi, sanitize_filename
-from . import Entry, MistError
+from . import Entry
+
+class ShenanigansError(Exception):
+    pass
 
 _DUMP_DATA = False
 
@@ -22,13 +25,14 @@ logger = logging.getLogger(__name__)
 # TODO: suppress ytdlp warning
 
 class MetadataPostProcessor(PostProcessor):
-    def __init__(self, data: Entry):
+    def __init__(self, data: Entry, image_options: dict = None):
         super().__init__()
         self.data = data
+        self.image_options = image_options
 
     def run(self, information):
         from . import tags
-        tags.apply(information["filepath"], self.data)
+        tags.apply(information["filepath"], self.data, image_options=self.image_options)
         return [], information
 
 class BaseLogger:
@@ -125,7 +129,7 @@ def get_playlist_title(url: str) -> str:
         with YoutubeDL(options_playlist_title) as ydl:
             info = ydl.extract_info(url, download=False)
     except DownloadError as e:
-        print(e)
+        raise ShenanigansError(e)
 
     assert info["_type"] == "playlist"
     return info["title"]
@@ -168,10 +172,10 @@ def get_entries_fast(url: str, progress: Callable[[str], None] = None) -> list[E
         with YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
     except DownloadError as e:
-        print(e)
+        raise ShenanigansError(e)
 
     if not info or 'entries' not in info:
-        raise MistError("unable to use entries")
+        raise ShenanigansError("unable to use entries")
 
     assert info["_type"] == "playlist"
     if _DUMP_DATA:
@@ -180,9 +184,6 @@ def get_entries_fast(url: str, progress: Callable[[str], None] = None) -> list[E
     for e in info["entries"]:
         output.append(extract_flat_entry(e))
     return output
-
-def get_item(url: str, progress: Callable) -> str:
-    raise NotImplementedError
 
 def extract_flat_entry(e: dict) -> Entry:
     entry = Entry(id=e["id"], url=e["url"])
@@ -196,7 +197,8 @@ def extract_flat_entry(e: dict) -> Entry:
 
     return entry
 
-def download_entries(platform: Source, entries: list[Entry], destination_dir: str, max_concurrency: int | None = None):
+def download_entries(platform: Source, entries: list[Entry], destination_dir: str, max_concurrency: int | None = None,
+                     image_options: dict = None):
     logger.debug(f"destination: {destination_dir}")
     if max_concurrency is not None:
         logger.debug(f"concurrency: {max_concurrency}")
@@ -216,11 +218,12 @@ def download_entries(platform: Source, entries: list[Entry], destination_dir: st
 
         try:
             with YoutubeDL(lopts) as ydl:
-                ydl.add_post_processor(MetadataPostProcessor(item))
+                ydl.add_post_processor(MetadataPostProcessor(item, image_options=image_options))
                 ydl.download([url])
         except DownloadError as e:
-            logger.error(f"filed to download entry '{item.id}': {e}")
+            logger.error(f"filed to process entry '{item.id}': {e}")
             logger.debug(e, exc_info=True)
+            # TODO: raise
 
     output = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrency) as executor:

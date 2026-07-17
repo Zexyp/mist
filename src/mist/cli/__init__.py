@@ -20,7 +20,7 @@ from ..errors import MistError
 from .. import config
 from ..messages import *
 
-# TODO: pad to multiples
+# TODO: switch to refs dir
 
 # TODO: --config-env=<name>=<envvar>, docs paths, -p --paginate, -P --no-pager, --work-tree=<path>, --no-lazy-fetch, --no-advice,
 # TODO: commands
