@@ -134,7 +134,7 @@ def get_playlist_title(url: str) -> str:
     assert info["_type"] == "playlist"
     return info["title"]
 
-def get_entries(url: str, progress: Callable[[str], None] = None, max_concurrency: int | None = None) -> list[Entry]:
+def get_entries(url: str, progress: Callable[[str], None] = None, max_concurrency: int | None = None, retries: int = 0, delay: int = 0) -> list[Entry]:
     if max_concurrency is not None:
         logger.debug(f"concurrency: {max_concurrency}")
 
@@ -142,7 +142,7 @@ def get_entries(url: str, progress: Callable[[str], None] = None, max_concurrenc
 
     def metadata_collection(e: Entry):
         from . import metadata
-        oe = metadata.obtain(metadata.detect_source(url), e.id)
+        oe = metadata.obtain(metadata.detect_source(url), e.id, retries=retries, delay=delay)
         oe.id = e.id
         return oe
 

@@ -153,14 +153,17 @@ class ConfigStack:
 def _read_ini(path: str) -> dict[str, str]:
     assert os.path.isfile(path)
 
-    parser = configparser.ConfigParser()
+    parser = configparser.ConfigParser(allow_unnamed_section=True)
     parser.read(path)
     d = {}
     for section in parser.sections():
-        section_path = _SEPARATOR.join([p.strip("\"") for p in section.split(" ")])
+        if section == configparser.UNNAMED_SECTION:
+            section_path_prefix = ""
+        else:
+            section_path_prefix = _SEPARATOR.join([p.strip("\"") for p in section.split(" ")]) + _SEPARATOR
 
         for key, value in parser.items(section):
-            d[f"{section_path}{_SEPARATOR}{key}"] = value
+            d[f"{section_path_prefix}{key}"] = value
 
     return d
 
@@ -169,9 +172,20 @@ def _write_ini(settings: dict[str, str], path: str):
         _convert_to_ini(settings).write(file)
 
 def _convert_to_ini(d: dict[str, str]) -> configparser.ConfigParser:
-    parser = configparser.ConfigParser()
+    parser = configparser.ConfigParser(allow_unnamed_section=True)
+
+    unnamed = configparser.UNNAMED_SECTION
+
+    # force creation of the unnamed section
+    parser.read_string("__placeholder__ =\n")
+    del parser[unnamed]["__placeholder__"]
+
     for k, v in d.items():
-        key_parts = k.split(".", 1)
+        if _SEPARATOR not in k:
+            parser[unnamed][k] = v
+            continue
+
+        key_parts = k.split(_SEPARATOR, 1)
         section = key_parts[0]
         key = key_parts[1]
 

@@ -200,8 +200,8 @@ class Mist:
         _configure_logger(self.config.active)
 
         from importlib.metadata import version
-        if self.config.local.get("core.version") != version(_package_name):
-            logger.warning("repository was created using a different Mist version")
+        if (found_version := self.config.local.get("core.version")) != (current_version := version(_package_name)):
+            logger.warning(f"repository was created using a different Mist version (repository: {found_version}, current: {current_version})")
 
         logger.debug(f"repository dir '{self.repository_dir}'")
 
@@ -239,15 +239,18 @@ class Mist:
         section_name = self._remote_section_name(remote)
 
         list_url = self.config.local.get(f"{section_name}.url")
+        source_platform = metadata.detect_source(list_url)
         if tags:
             items = shenanigans.get_entries(list_url,
                                             progress=progress,
-                                            max_concurrency=self._get_concurrency())
+                                            max_concurrency=self._get_concurrency(),
+                                            retries=self.config.active.getint("core.retries", 2),
+                                            delay=self.config.active.getint("core.delay", 5))
         else:
             items = shenanigans.get_entries_fast(list_url,
                                                  progress=progress)
 
-        loaded = not prune and self.get_remote_entries(remote) or []
+        loaded = not prune and self.get_cached_remote_entries(remote) or []
 
         merged = []
         if loaded:
@@ -265,18 +268,55 @@ class Mist:
         loaded = merged
 
         if not dry_run:
-            entries_file = self._get_cache_file(remote, files.CACHE_TYPE_ENTRIES)
-            local_cache.local_save(entries_file, loaded)
+            self.save_cached_remote_entries_direct(remote, loaded)
 
         return loaded
 
-    def get_remote_entries(self, remote: str) -> list[Entry] | None:
-        self._assert_remote(remote)
+    def save_cached_remote_entries_direct(self, remote_name: str, entries: list[Entry]) -> None:
+        self._assert_remote(remote_name)
+        source = metadata.detect_source(self.get_remote(remote_name).url)
 
-        entries_file = self._get_cache_file(remote, files.CACHE_TYPE_ENTRIES)
-        if not os.path.exists(entries_file):
+        dir_refs = os.path.join(self.repository_dir, "refs/remotes")
+        dir_objects = os.path.join(self.repository_dir, "objects", source.name)
+
+        os.makedirs(dir_refs, exist_ok=True)
+        os.makedirs(dir_objects, exist_ok=True)
+        with open(os.path.join(dir_refs, remote_name), "w") as f_refs:
+            for e in entries:
+                f_refs.write(f"{e.id}\n")
+
+                object_path = os.path.join(dir_objects, e.id)
+                local_cache._write_entry(object_path, e)
+
+    def get_cached_remote_ids(self, remote_name: str) -> list[str] | None:
+        self._assert_remote(remote_name)
+
+        dir_refs = os.path.join(self.repository_dir, "refs/remotes")
+
+        if not os.path.isfile(refs_path := os.path.join(dir_refs, remote_name)):
             return None
-        return local_cache.local_load(entries_file)
+
+        with open(refs_path, mode="r") as f:
+            ids = [stripped for l in f.readlines() if (stripped := l.strip())]
+
+        return ids
+
+    def get_cached_remote_entries(self, remote_name: str) -> list[Entry] | None:
+        ids = self.get_cached_remote_ids(remote_name)
+        if ids is None:
+            return None
+
+        source = metadata.detect_source(self.get_remote(remote_name).url)
+        dir_objects = os.path.join(self.repository_dir, "objects", source.name)
+
+        output = []
+        for id in ids:
+            object_path = os.path.join(dir_objects, id)
+            if not os.path.isfile(object_path):
+                raise MistError("cache broken")
+            output.append(local_cache._read_entry(object_path))
+        return output
+
 
     def list_remote(self, remote_url: str) -> list[Entry]:
         entries = shenanigans.get_entries_fast(_sanitize_url(remote_url),
@@ -289,8 +329,7 @@ class Mist:
         remote = self.active_remote_name_get()
         assert remote
 
-        entries_file = self._get_cache_file(remote, files.CACHE_TYPE_ENTRIES)
-        ids_local = set(i.id for i in local_cache.local_load(entries_file))
+        ids_local = set(i.id for i in self.get_cached_remote_entries(remote))
         ids_worktree = set(i.id for i in worktree_cache.worktree_load(self.worktree_dir))
 
         warnings.warn("unimplemented slop")
@@ -307,7 +346,7 @@ class Mist:
         assert len(remotes) == 1, "not implemented"
         remote = remotes[0]
 
-        entries = self.get_remote_entries(remote)
+        entries = self.get_cached_remote_entries(remote)
         source = metadata.detect_source(self.get_remote(remote).url)
 
         worktree_items = worktree_cache.worktree_load(self.worktree_dir)
@@ -442,11 +481,6 @@ class Mist:
         section_name = self._remote_section_name(name)
         if not self.config.local.has(f"{section_name}.", sub=True):
             raise MistError(MSG_NO_SUCH_REMOTE.format(name=name))
-
-    def _get_cache_file(self, remote_name: str, cache_type: str) -> str:
-        result = os.path.join(self.repository_dir, files.DIR_REPOSITORY_CACHE, remote_name, cache_type)
-        os.makedirs(os.path.dirname(result), exist_ok=True)
-        return result
 
     def _get_active_remote_storage_file(self) -> str:
         self._assert_repository()

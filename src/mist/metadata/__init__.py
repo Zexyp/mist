@@ -7,8 +7,9 @@ from urllib.parse import urlparse, urlsplit
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import inspect
+import time
 
-from .scrape_utils import assert_single
+from .scrape_utils import assert_single, RateLimitHitError
 from .. import Entry
 from ..utils import indent_list, MistEnum
 
@@ -196,20 +197,38 @@ _build_registry()
 
 # TODO: utilize cache
 
-def enrich(data: Data, track: Entry, item,  using_connector: MetadataConnector) -> Data:
+def enrich(data: Data, track: Entry, item,  using_connector: MetadataConnector, retries: int = 3, delay: int = 5) -> Data:
     assert using_connector
 
     clean: bool = True
 
+    def retry(operation: Callable[[], Any]) -> Any:
+        current_delay = delay
+        for attempt in range(0, retries + 1):
+            try:
+                return operation()
+            except RateLimitHitError:
+                if attempt != retries:
+                    logger.warning(f"rate limit hit: attempt {attempt + 1} of {retries + 1}, sleeping for {current_delay} seconds...")
+                    time.sleep(current_delay)
+                    current_delay *= 2
+                    continue
+                else:
+                    logger.error(f"rate limit hit: attempt {attempt + 1} of {retries + 1}, attempts depleted...")
+                    raise
+
+        assert False, "unreachable"
+
     def try_enrich(lmbd: Callable[[], Any]):
         nonlocal clean
         try:
-            return lmbd()
-        except NotSupported:
+            return retry(lmbd)
+        except NotSupported as e:
+            logger.debug(f"connector '{type(using_connector).__name__}' deos not support ({type(e).__name__}: {e}):\n{str(inspect.getsourcelines(lmbd)[0][0]).strip()}")
             return None
         except Exception as e:
             clean = False
-            logger.error(f"connector '{type(using_connector).__name__}' failed during:\n{str(inspect.getsourcelines(lmbd)[0][0]).strip()}\n{type(e).__name__}: {e}")
+            logger.error(f"connector '{type(using_connector).__name__}' failed ({type(e).__name__}: {e}):\n{str(inspect.getsourcelines(lmbd)[0][0]).strip()}")
             logger.debug(e, exc_info=True)
             return None
 
@@ -264,7 +283,7 @@ def enrich(data: Data, track: Entry, item,  using_connector: MetadataConnector) 
 
     return data
 
-def obtain(source: Source, entry: str):
+def obtain(source: Source, entry: str, retries: int = 0, delay: int = 10):
     logger.debug(f"collecting metadata for '{entry}'")
 
     visited: set[tuple[Source, str]] = set()
@@ -283,7 +302,10 @@ def obtain(source: Source, entry: str):
         logger.debug(f"visiting {source.name}")
 
         # some crucial data are generated during this step, so we cannot use Entry.visited to avoid redoing work
-        data = enrich(data, track, item, connector)
+        assert connector
+        data = enrich(data, track, item, connector,
+                      retries=retries,
+                      delay=delay)
 
         visited.add((source, item))
 

@@ -13,19 +13,13 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
 
     def func(args):
         if args.set_upstream:
-            assert len(args.remote) == 1
-            mist.active_remote_name_set(args.remote[0])
+            assert args.repository
+            mist.active_remote_name_set(args.repository)
 
-        remotes = args.repository or [mist.active_remote_name_get()]
-        dirty = False
+        remote = args.repository or mist.active_remote_name_get()
 
-        for r in remotes:
-            mist.fetch(r)
-        for r in remotes:
-            if mist.merge(r):
-                dirty = True
-
-        if not dirty:
+        mist.fetch(remote)
+        if not mist.merge([remote]):
             print("Already up to date.")
 
     parser.set_defaults(func=func, parser=parser)

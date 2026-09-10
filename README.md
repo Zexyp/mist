@@ -8,6 +8,8 @@
 ![](https://img.shields.io/badge/code%20style-freestyle-313131.svg?style=flat-square)
 ![](https://img.shields.io/badge/quality-ass-1fb311.svg?style=flat-square)
 ![](https://img.shields.io/badge/tests-passing%20eventually-ffd700?style=flat-square)
+
+![](https://img.shields.io/badge/Python-3.13-313131.svg?style=flat-square)
 </div>
 
 ---
@@ -61,6 +63,8 @@ pip install .
 - `core.color`
 - `core.version`
 - `core.concurrency`
+- `core.retries`
+- `core.delay`
 
 - `clone.defaultRemoteName`
 

@@ -103,7 +103,7 @@ def build_parser_edit(subparsers, mist: Mist) -> argparse.ArgumentParser:
 
     def func(args):
         editor = mist.config.active.get("core.editor", None)
-        assert editor is not None
+        assert editor is not None, "no editor to use"
         cfg = _choose_cfg_write(mist, args.kind)
 
         import subprocess

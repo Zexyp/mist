@@ -9,4 +9,5 @@ FILE_GLOBAL_CONFIG = ".mistconfig"
 FILE_REPOSITORY_CONFIG = "config" # repository config name
 FILE_REPOSITORY_REMOTE = "remote" # current remote name
 
-CACHE_TYPE_ENTRIES = "entries"
+DIR_REFS = "refs"
+DIR_OBJECTS = "objects"
