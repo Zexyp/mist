@@ -22,14 +22,10 @@ def _apply_tags_mp3(tags):
     pass
 def _apply_tags_ogg(tags):
     pass
-def _apply_tags_opus(tags):
-    pass
 def _apply_tags_flac(tags):
     pass
 
 def _apply_image_mp3(tags):
-    pass
-def _apply_image_opus(tags):
     pass
 def _apply_image_ogg(tags):
     pass
@@ -59,9 +55,10 @@ def _apply_image(tags, url: str, options: dict = None):
                         data=data.read())
 
 def apply(file: str, data: Entry, image_options: dict = None):
-    logger.debug("applying mp3 metadata")
-
     assert os.path.isfile(file), f"not a file '{file}'"
+
+    assert file.endswith(".mp3"), "only mp3 supported rn"
+
     try:
         tags = ID3(file)
     except Exception as e:

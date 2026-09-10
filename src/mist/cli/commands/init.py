@@ -1,12 +1,13 @@
 import argparse
 import os
 
+from ..cli_utils import summon_subcommand
 from ... import Mist, MistError
 
 # TODO: -q --quiet
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("init", description="Create an empty Mist repository")
+    parser = summon_subcommand(subparsers, "init", description="Create an empty Mist repository")
     parser.add_argument("directory", metavar="<directory>", nargs="?")
 
     def func(args):

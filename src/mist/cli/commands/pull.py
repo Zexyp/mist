@@ -1,12 +1,13 @@
 import argparse
 
+from ..cli_utils import summon_subcommand
 from ..completors import RemoteCompleter
 from ... import Mist
 
 # TODO: -q --quiet, -v --verbose, --progress, --[no-]progress, --[no-]recurse-submodules[=<no-demand>], -n, --[no-]stat,
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("pull")
+    parser = summon_subcommand(subparsers, "pull", description="Fetch from and integrate with another repository")
     parser.add_argument("repository", metavar="<repository>", nargs="?").completer = RemoteCompleter(mist)
     parser.add_argument("--set-upstream", action="store_true")
 

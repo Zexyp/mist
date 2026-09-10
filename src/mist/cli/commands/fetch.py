@@ -3,6 +3,7 @@ import logging
 import warnings
 from pprint import pformat
 
+from ..cli_utils import summon_subcommand
 from ..completors import RemoteCompleter
 from ... import Mist
 
@@ -20,7 +21,7 @@ def _report_progress(msg):
     print(f"\r{msg}", end="")
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("fetch", description="Download objects from another repository")
+    parser = summon_subcommand(subparsers, "fetch", description="Download objects from another repository")
     parser.add_argument("remote", metavar="<remote>", nargs='*').completer = RemoteCompleter(mist)
     parser.add_argument("--tags", action="store_true")
     parser.add_argument("--set-upstream", action="store_true")

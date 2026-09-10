@@ -131,7 +131,7 @@ class ConfigStack:
         self.active.overlay(self.local)
         self.active.overlay(self.args)
 
-    def file_set(self, repository_dir=None, working_dir=None):
+    def file_set(self, repository_dir=None):
         if repository_dir is not None:
             self.local.path = os.path.join(repository_dir, files.FILE_REPOSITORY_CONFIG)
         else:

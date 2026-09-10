@@ -6,6 +6,7 @@ import os
 import sys
 import warnings
 
+from .actions import RootHelpAction
 from ..log import announce_optional_module_error
 
 try:
@@ -34,37 +35,13 @@ ls-files
 ignore
 """
 
-class HelpAction(argparse.Action):
-    def __init__(self, option_strings, dest, commands=None, **kwargs):
-        self.commands = commands
-        super().__init__(option_strings, dest, **kwargs)
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        if option_string == "-h":
-            parser.print_usage()
-            parser.exit()
-        if option_string == "--help":
-            parser.print_help()
-            print("commands:")
-            for name, subparser in self.commands.items():
-                print(f"  {name:16}", end="")
-                if subparser.description:
-                    print(f" {subparser.description}", end="")
-                print()
-
-            parser.exit()
-
-        # default to error
-        parser.print_usage()
-        parser.exit(1)
-
 def build_parser(mist: Mist) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False, description="another stupid content tracker")
 
     subparsers = parser.add_subparsers(metavar="<command>", dest="command")
 
     from .commands import help as cmd_help
-    from .commands import init, config, remote, fetch, merge, clone, ls_remote, ls_files, pull
+    from .commands import init, config, remote, fetch, merge, clone, ls_remote, ls_files, pull, status
     command_parsers = {
         "help": cmd_help.build_parser(subparsers, mist),
         "config": config.build_parser(subparsers, mist),
@@ -74,6 +51,7 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
         "fetch": fetch.build_parser(subparsers, mist),
         "merge": merge.build_parser(subparsers, mist),
         "pull": pull.build_parser(subparsers, mist),
+        "status": status.build_parser(subparsers, mist),
         "ls-remote": ls_remote.build_parser(subparsers, mist),
         "ls-files": ls_files.build_parser(subparsers, mist),
     }
@@ -88,8 +66,8 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
     from importlib.metadata import version
     parser.add_argument("-v", "--version", action="version", version=f"Mist {version(_package_name)}")
     help_group = parser.add_mutually_exclusive_group(required=False)
-    help_group.add_argument("-h", action=HelpAction, nargs=0, help="short help", commands=command_parsers)
-    help_group.add_argument("--help", action=HelpAction, nargs=0, help="extensive help", commands=command_parsers)
+    help_group.add_argument("-h", action=RootHelpAction, nargs=0, help="short help", commands=command_parsers)
+    help_group.add_argument("--help", action=RootHelpAction, nargs=0, help="extensive help", commands=command_parsers)
     parser.add_argument("-C", metavar="<path>")
     parser.add_argument("-c", metavar="<name>=<value>", action="append", type=parse_configuration_param)
     parser.add_argument("--mist-dir", metavar="<path>", default=None)

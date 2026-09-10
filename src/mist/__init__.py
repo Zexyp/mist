@@ -5,8 +5,6 @@ import sys
 import warnings
 from dataclasses import dataclass
 from pprint import pprint, pformat
-from unittest import case
-from zoneinfo import available_timezones
 
 _package_name = __package__
 logger = logging.getLogger(__name__)
@@ -68,10 +66,12 @@ def _merge_entry(original: Entry, new: Entry, prune_tags: bool, ignore_tags: boo
         original.genre = new.genre
         original.artwork = new.artwork
 
-    if not ignore_tags:
-        if not prune_tags and set(original.tags or []).difference(set(new.tags or [])):
-            raise MistError("tags would be removed")
-        original.tags = new.tags
+    if new.tags and not ignore_tags:
+        # do we care about order?
+        if original.tags and not prune_tags:
+            original.tags = list({*original.tags, *new.tags})
+        else:
+            original.tags = list(set(new.tags))
 
     if new.visited:
         if original.visited:
@@ -112,6 +112,7 @@ def _parse_image_options(cfg: dict[str, str]) -> dict:
         if "@" in fmt:
             fmt, fmt_details = fmt.split("@", maxsplit=1)
         result["format"] = fmt
+        available_bits = None
         match fmt:
             case "jpeg" | "jpg" | "jfif":
                 available_bits = {
@@ -163,6 +164,7 @@ class Remote:
 
 class Mist:
     def __init__(self):
+        self.worktree_dir: str = None
         self.working_dir: str = None
         self.repository_dir: str = None
         self.config: ConfigStack = ConfigStack()
@@ -185,12 +187,13 @@ class Mist:
         assert os.path.isdir(repository_dir)
 
         self.repository_dir = repository_dir
+        # TODO: worktree redirection
+        self.worktree_dir = os.path.dirname(repository_dir)
         self._assert_repository()
 
         # only set if in repo
         self.config.file_set(
             repository_dir=self.repository_dir,
-            working_dir=self.working_dir,
         )
         self.config.load()
 
@@ -221,11 +224,6 @@ class Mist:
         self.config.local.save()
 
         return target_dir
-
-    def _get_cache_file(self, remote_name: str, cache_type: str) -> str:
-        result = os.path.join(self.repository_dir, files.DIR_REPOSITORY_CACHE, remote_name, cache_type)
-        os.makedirs(os.path.dirname(result), exist_ok=True)
-        return result
 
     def fetch(self, remote: str, tags: bool = False,
               dry_run: bool = False,
@@ -285,16 +283,34 @@ class Mist:
                                                progress=lambda m: logger.debug(m))
         return entries
 
-    def merge(self, remote: str, progress: Callable = None, strategy: str = None) -> list[Entry]:
+    def list_files(self) -> list[str]:
+        # technical dept accumulation doohickey can be found here
+        self._assert_repository()
+        remote = self.active_remote_name_get()
+        assert remote
+
+        entries_file = self._get_cache_file(remote, files.CACHE_TYPE_ENTRIES)
+        ids_local = set(i.id for i in local_cache.local_load(entries_file))
+        ids_worktree = set(i.id for i in worktree_cache.worktree_load(self.worktree_dir))
+
+        warnings.warn("unimplemented slop")
+        return list(ids_local.intersection(ids_worktree))
+
+    # TODO: remoteS
+    # strategy: dumb, ours, manual, theirs
+    def merge(self, remotes: list[str], progress: Callable = None, strategy: str = None) -> list[Entry]:
         if progress:
             raise NotImplementedError("merge: progress reporting not implemented")
         if strategy:
             raise NotImplementedError("merge: strategy not implemented")
 
+        assert len(remotes) == 1, "not implemented"
+        remote = remotes[0]
+
         entries = self.get_remote_entries(remote)
         source = metadata.detect_source(self.get_remote(remote).url)
 
-        worktree_items = worktree_cache.worktree_load(self.working_dir)
+        worktree_items = worktree_cache.worktree_load(self.worktree_dir)
         missing_ids = set([e.id for e in entries]).difference(set([e.id for e in worktree_items]))
 
         image_options = _parse_image_options(self.config.active.getsub("image."))
@@ -303,11 +319,19 @@ class Mist:
         entries_to_download = [e for e in entries if e.id in missing_ids]
         if entries_to_download:
             shenanigans.download_entries(source, entries_to_download,
-                                         destination_dir=self.working_dir,
+                                         destination_dir=self.worktree_dir,
                                          max_concurrency=self._get_concurrency(),
                                          image_options=image_options)
         return entries_to_download
 
+    def merge_continue(self):
+        raise NotImplementedError
+
+    def merge_abort(self):
+        raise NotImplementedError
+
+    def merge_quit(self):
+        raise NotImplementedError
 
     def clone(self, url: str, destination_dir: str = None, origin: str = None, tags: bool = False):
         url = _sanitize_url(url)
@@ -318,7 +342,7 @@ class Mist:
         remote = origin or self.config.active.get("clone.defaultRemoteName", "origin")
         self.remote_add(remote, url)
         self.fetch(remote, tags=tags)
-        self.merge(remote)
+        self.merge([remote])
 
     def get_remotes(self) -> list[Remote]:
         self._assert_repository()
@@ -339,25 +363,6 @@ class Mist:
         remote.url = self.config.local.get(f"{section_name}.url")
 
         return remote
-
-    @staticmethod
-    def _remote_section_name(mame: str) -> str:
-        return f"remote.{mame}"
-
-    def _assert_repository(self):
-        if not self.is_repository():
-            raise MistError(MSG_NOT_A_REPOSITORY)
-
-    # now operates on local config only, which make sense ig
-    def _assert_remote(self, name: str):
-        self._assert_repository()
-
-        if name is None:
-            raise MistError(MSG_NO_REMOTE)
-
-        section_name = self._remote_section_name(name)
-        if not self.config.local.has(f"{section_name}.", sub=True):
-            raise MistError(MSG_NO_SUCH_REMOTE.format(name=name))
 
     def remote_add(self, name: str, url: str):
         url = _sanitize_url(url)
@@ -401,11 +406,6 @@ class Mist:
         self.config.local.set(f"{section_name}.url", new_url)
         self.config.local.save()
 
-    def _get_active_remote_storage_file(self) -> str:
-        self._assert_repository()
-
-        return os.path.join(self.repository_dir, files.FILE_REPOSITORY_REMOTE)
-
     def active_remote_name_get(self) -> str | None:
         self._assert_repository()
 
@@ -423,3 +423,32 @@ class Mist:
 
     def _get_concurrency(self) -> int:
         return self.config.local.getint("core.concurrency", os.cpu_count())
+
+    @staticmethod
+    def _remote_section_name(mame: str) -> str:
+        return f"remote.{mame}"
+
+    def _assert_repository(self):
+        if not self.is_repository():
+            raise MistError(MSG_NOT_A_REPOSITORY)
+
+    # now operates on local config only, which make sense ig
+    def _assert_remote(self, name: str):
+        self._assert_repository()
+
+        if name is None:
+            raise MistError(MSG_NO_REMOTE)
+
+        section_name = self._remote_section_name(name)
+        if not self.config.local.has(f"{section_name}.", sub=True):
+            raise MistError(MSG_NO_SUCH_REMOTE.format(name=name))
+
+    def _get_cache_file(self, remote_name: str, cache_type: str) -> str:
+        result = os.path.join(self.repository_dir, files.DIR_REPOSITORY_CACHE, remote_name, cache_type)
+        os.makedirs(os.path.dirname(result), exist_ok=True)
+        return result
+
+    def _get_active_remote_storage_file(self) -> str:
+        self._assert_repository()
+
+        return os.path.join(self.repository_dir, files.FILE_REPOSITORY_REMOTE)

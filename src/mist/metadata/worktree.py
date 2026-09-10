@@ -27,4 +27,5 @@ def worktree_load(directory: str) -> list[Entry]:
 
         output.append(entry)
 
+    logger.debug(f"loaded {len(output)} entries")
     return output
