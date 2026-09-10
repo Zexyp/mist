@@ -1,6 +1,8 @@
 <div align="center">
 
 # mist
+<img alt="logo" src="assets/logo.svg" width="30%"/>
+
 **m**usic **i**ngestion & **s**torage **t**ool
 
 ![](https://img.shields.io/badge/code%20style-freestyle-313131.svg?style=flat-square)
