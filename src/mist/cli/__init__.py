@@ -71,6 +71,7 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
     parser.add_argument("-C", metavar="<path>")
     parser.add_argument("-c", metavar="<name>=<value>", action="append", type=parse_configuration_param)
     parser.add_argument("--mist-dir", metavar="<path>", default=None)
+    parser.add_argument("--debug", action="store_true", default=False)
 
     #parser_checkout = subparsers.add_parser("checkout")
     #parser_checkout.add_argument("remote")
@@ -107,6 +108,10 @@ def run(arguments: list[str]):
 
     if args.c:
         mist.config.args.settings = {t[0]: t[1] for t in args.c}
+        mist.config.args.commit()
+
+    if args.debug:
+        mist.config.args.set("core.debug", True)
         mist.config.args.commit()
 
     mist.set_working_dir(os.getcwd())

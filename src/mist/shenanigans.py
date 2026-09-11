@@ -134,11 +134,15 @@ def get_playlist_title(url: str) -> str:
     assert info["_type"] == "playlist"
     return info["title"]
 
-def get_entries(url: str, progress: Callable[[str], None] = None, max_concurrency: int | None = None, retries: int = 0, delay: int = 0) -> list[Entry]:
+def get_entries(url: str, progress: Callable[[str], None] = None, max_concurrency: int | None = None, retries: int = 0, delay: int = 0,
+                start: int | None = None,
+                end: int | None = None) -> list[Entry]:
     if max_concurrency is not None:
         logger.debug(f"concurrency: {max_concurrency}")
 
-    entries = get_entries_fast(url, progress=progress)
+    entries = get_entries_fast(url, progress=progress,
+                               start=start,
+                               end=end)
 
     def metadata_collection(e: Entry):
         from . import metadata
@@ -158,14 +162,20 @@ def get_entries(url: str, progress: Callable[[str], None] = None, max_concurrenc
 
     return output
 
-def get_entries_fast(url: str, progress: Callable[[str], None] = None) -> list[Entry]:
+def get_entries_fast(url: str, progress: Callable[[str], None] = None,
+                     start: int | None = None,
+                     end: int | None = None) -> list[Entry]:
     opts = dict(options_entries_flat)
     if progress:
         logger.debug("progress callback will be used")
         opts["logger"] = YtPageProgressLogger(progress)
 
 
-    opts["progress_hooks"] = [_emtpy_hook],
+    opts["progress_hooks"] = [_emtpy_hook]
+    if start is not None:
+        opts["playliststart"] = start
+    if end is not None:
+        opts["playlistend"] = end
 
     try:
         info = None

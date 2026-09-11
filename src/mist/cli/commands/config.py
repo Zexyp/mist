@@ -1,4 +1,6 @@
 import argparse
+import logging
+import traceback
 from typing import Callable
 from unittest import case
 
@@ -7,6 +9,8 @@ from ..cli_utils import summon_subcommand
 from ... import Mist, MistError
 from ...config import ConfigReader
 from ...messages import *
+
+logger = logging.getLogger(__name__)
 
 # TODO: add system level
 # TODO: rename-section, remove-section
@@ -103,11 +107,22 @@ def build_parser_edit(subparsers, mist: Mist) -> argparse.ArgumentParser:
 
     def func(args):
         editor = mist.config.active.get("core.editor", None)
-        assert editor is not None, "no editor to use"
+        if editor is None:
+            raise MistError("no editor")
         cfg = _choose_cfg_write(mist, args.kind)
 
         import subprocess
-        subprocess.call([editor, cfg.path])
+
+        return_code = None
+        try:
+            return_code = subprocess.call([editor, cfg.path])
+        except Exception as e:
+            logger.error(f"cannot run '{editor}': {type(e).__name__}: {e}")
+            parser.exit(1)
+
+        if return_code != 0:
+            logger.error(f"There was a problem with the editor '{editor}'")
+            parser.exit(1)
 
     parser.set_defaults(func=func, parser=parser)
     return parser

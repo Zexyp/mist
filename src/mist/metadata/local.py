@@ -27,14 +27,13 @@ def _read_entry(file: str) -> Entry:
     e = Entry()
 
     e.id = reader.get("id")
-    assert e.id
 
-    e.title = reader.get("title")
-    e.name = reader.get("name")
+    e.title = reader.get("title", None)
+    e.name = reader.get("name", None)
     e.tags = json.loads(reader.get("tags", "[]"))
-    e.genre = reader.get("genra")
-    e.artwork = reader.get("artwork")
-    e.artist_name = reader.get("artist_name")
+    e.genre = reader.get("genra", None)
+    e.artwork = reader.get("artwork", None)
+    e.artist_name = reader.get("artist_name", None)
     # e.visited = json.loads(reader.get("visited", "[]"))
     return e
 

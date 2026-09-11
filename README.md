@@ -69,11 +69,15 @@ pip install .
 - `clone.defaultRemoteName`
 
 - `remote.<name>.url`
+- `remote.<name>.start`
+- `remote.<name>.end`
+- 
+- `image.size`
+- `image.format`
+- `image.adjustment`
 
 ### TODO:
 - `remote.<name>.skipFetchAll`
-- `remote.<name>.start`
-- `remote.<name>.end`
 - `remote.<name>.items`
 
 **TODO:** use yaptex

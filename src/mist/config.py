@@ -9,6 +9,7 @@ from . import files
 # todo: from collections import OrderedDict
 
 _SEPARATOR = "."
+_UNSET = object()
 
 logger = logging.getLogger(__name__)
 
@@ -30,22 +31,31 @@ class ConfigReader:
         return any(k.startswith(key) for k in self.settings)
 
     # fixme: i'm crying
-    def get(self, key: str, default=None) -> str:
+    def get(self, key: str, default=_UNSET) -> str:
         result = self.settings.get(key, default)
+        if result is _UNSET:
+            raise KeyError(key)
+
         return result
 
-    def getbool(self, key: str, default=None) -> bool:
+    def getbool(self, key: str, default=_UNSET) -> bool:
         value = self.get(key, default)
-        match value:
+        if value is None:
+            return None
+
+        match value: # fuck upper case
             case "true" | "on" | "yes" | "1" | True:
                 return True
             case "false" | "off" | "no" | "0" | False:
                 return False
             case _:
-                raise ValueError("not convertable")
+                raise ValueError("not convertable to bool")
 
-    def getint(self, key: str, default=None) -> int:
+    def getint(self, key: str, default=_UNSET) -> int:
         value = self.get(key, default)
+        if value is None:
+            return None
+
         return int(value)
 
     def getsub(self, key: str) -> dict[str, str]:
@@ -67,15 +77,15 @@ class ConfigReader:
         match value:
             case str():
                 self.settings[key] = value
-            case int():
-                self.settings[key] = str(value)
             case bool():
                 self.settings[key] = "true" if value else "false"
+            case int():
+                self.settings[key] = str(value)
             case dict() if all(isinstance(k, str) for k in value):
                 for k, v in value.items():
                     self.set(f"{key}{k}", v)
             case _:
-                assert False, f"invalid value for set ({type(value).__name__})"
+                assert False, f"attempted to set invalid value ({type(value).__name__})"
 
     def unset(self, key: str, sub: bool = False):
         if not sub:
@@ -98,7 +108,7 @@ class ConfigReader:
 
         _write_ini(self.settings, self.path)
 
-        logger.debug(f"config write '{self.path}'")
+        logger.debug(f"write file '{self.path}'")
 
         self.commit()
 
@@ -108,7 +118,7 @@ class ConfigReader:
 
         self.settings = _read_ini(self.path)
 
-        logger.debug(f"config read '{self.path}'")
+        logger.debug(f"read file '{self.path}'")
 
         self.commit()
 

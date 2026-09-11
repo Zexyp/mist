@@ -4,10 +4,16 @@ import os
 import sys
 import warnings
 from dataclasses import dataclass
+from enum import Flag, auto
 from pprint import pprint, pformat
 
 _package_name = __package__
 logger = logging.getLogger(__name__)
+
+class DistinguishedId:
+    source: str = None
+    id: str = None
+
 # entry can be just a remote snapshot
 # or a local file description
 # or be full of metadata
@@ -26,6 +32,9 @@ class Entry:
     visited: set[str] = None
     artwork: str = None
 
+class FileEntry(Entry):
+    file: str = None
+
 from . import files
 from .config import ConfigReader, ConfigStack
 from .errors import MistError
@@ -33,9 +42,17 @@ from . import config
 from .messages import *
 from . import shenanigans, metadata
 from .utils import url_strip_utm, url_strip_share_identifier, sanitize_filename
-from .metadata import local as local_cache, worktree as worktree_cache
+from .metadata import worktree as worktree_cache
+from .storage import Storage
 
-# TODO: bracketeer
+class ListItemFlag(Flag):
+    NONE = 0
+    CACHED = auto()
+    DELETED = auto()
+    MODIFIED = auto()
+    OTHERS = auto()
+
+_DEFAULT_REMOTE_NAME = "origin"
 
 def _find_repository_dir(start: str, soft: bool = True) -> str | None:
     assert os.path.isabs(start)
@@ -161,6 +178,8 @@ def _parse_image_options(cfg: dict[str, str]) -> dict:
 class Remote:
     name: str = None
     url: str = None
+    start: int = None
+    end: int = None
 
 class Mist:
     def __init__(self):
@@ -168,6 +187,7 @@ class Mist:
         self.working_dir: str = None
         self.repository_dir: str = None
         self.config: ConfigStack = ConfigStack()
+        self.storage: Storage = Storage()
 
     def set_working_dir(self, working_dir):
         assert os.path.isdir(working_dir)
@@ -197,10 +217,13 @@ class Mist:
         )
         self.config.load()
 
+        self.storage.init(repodir=self.repository_dir)
+
         _configure_logger(self.config.active)
 
+        # sanity check
         from importlib.metadata import version
-        if (found_version := self.config.local.get("core.version")) != (current_version := version(_package_name)):
+        if (found_version := self.config.local.get("core.version", None)) != (current_version := version(_package_name)):
             logger.warning(f"repository was created using a different Mist version (repository: {found_version}, current: {current_version})")
 
         logger.debug(f"repository dir '{self.repository_dir}'")
@@ -233,24 +256,29 @@ class Mist:
               progress: Callable[[str], None] = None) -> list[Entry]:
         """returns a list of locally available entries"""
         self._assert_remote(remote)
+        remote_cfg = self.get_remote(remote)
 
         logger.debug(f"fetch {force=}, {prune=}, {prune_tags=}")
 
         section_name = self._remote_section_name(remote)
 
         list_url = self.config.local.get(f"{section_name}.url")
-        source_platform = metadata.detect_source(list_url)
+        source = metadata.detect_source(remote_cfg.url)
         if tags:
             items = shenanigans.get_entries(list_url,
                                             progress=progress,
                                             max_concurrency=self._get_concurrency(),
                                             retries=self.config.active.getint("core.retries", 2),
-                                            delay=self.config.active.getint("core.delay", 5))
+                                            delay=self.config.active.getint("core.delay", 5),
+                                            start=remote_cfg.start, end=remote_cfg.end)
         else:
             items = shenanigans.get_entries_fast(list_url,
-                                                 progress=progress)
+                                                 progress=progress,
+                                                 start=remote_cfg.start, end=remote_cfg.end)
 
-        loaded = not prune and self.get_cached_remote_entries(remote) or []
+        loaded = not prune and self.storage.get_remote_entries(source, remote) or []
+
+        # TODO: abstract
 
         merged = []
         if loaded:
@@ -268,72 +296,84 @@ class Mist:
         loaded = merged
 
         if not dry_run:
-            self.save_cached_remote_entries_direct(remote, loaded)
+            self.storage.save_remote_entries_direct(source, remote, loaded)
 
         return loaded
 
-    def save_cached_remote_entries_direct(self, remote_name: str, entries: list[Entry]) -> None:
-        self._assert_remote(remote_name)
-        source = metadata.detect_source(self.get_remote(remote_name).url)
-
-        dir_refs = os.path.join(self.repository_dir, "refs/remotes")
-        dir_objects = os.path.join(self.repository_dir, "objects", source.name)
-
-        os.makedirs(dir_refs, exist_ok=True)
-        os.makedirs(dir_objects, exist_ok=True)
-        with open(os.path.join(dir_refs, remote_name), "w") as f_refs:
-            for e in entries:
-                f_refs.write(f"{e.id}\n")
-
-                object_path = os.path.join(dir_objects, e.id)
-                local_cache._write_entry(object_path, e)
-
-    def get_cached_remote_ids(self, remote_name: str) -> list[str] | None:
-        self._assert_remote(remote_name)
-
-        dir_refs = os.path.join(self.repository_dir, "refs/remotes")
-
-        if not os.path.isfile(refs_path := os.path.join(dir_refs, remote_name)):
-            return None
-
-        with open(refs_path, mode="r") as f:
-            ids = [stripped for l in f.readlines() if (stripped := l.strip())]
-
-        return ids
-
-    def get_cached_remote_entries(self, remote_name: str) -> list[Entry] | None:
-        ids = self.get_cached_remote_ids(remote_name)
-        if ids is None:
-            return None
-
-        source = metadata.detect_source(self.get_remote(remote_name).url)
-        dir_objects = os.path.join(self.repository_dir, "objects", source.name)
-
-        output = []
-        for id in ids:
-            object_path = os.path.join(dir_objects, id)
-            if not os.path.isfile(object_path):
-                raise MistError("cache broken")
-            output.append(local_cache._read_entry(object_path))
-        return output
-
+    def get_all_cached_objects(self) -> list[Entry]:
+        raise NotImplementedError
 
     def list_remote(self, remote_url: str) -> list[Entry]:
         entries = shenanigans.get_entries_fast(_sanitize_url(remote_url),
                                                progress=lambda m: logger.debug(m))
         return entries
 
-    def list_files(self) -> list[str]:
+    # TODO: add flag
+    def list_files(self,
+                   cached: bool = False,
+                   modified: bool = False,
+                   deleted: bool = False,
+                   others: bool = False) -> list[tuple[metadata.Source, str, ListItemFlag]]:
+        # deleted also means missing
         # technical dept accumulation doohickey can be found here
         self._assert_repository()
-        remote = self.active_remote_name_get()
-        assert remote
 
-        ids_local = set(i.id for i in self.get_cached_remote_entries(remote))
-        ids_worktree = set(i.id for i in worktree_cache.worktree_load(self.worktree_dir))
+        # hord all the remote data
+        remotes = self.get_remotes()
+        entries: list[tuple[metadata.Source, str]] = []
+        for r in remotes:
+            s = metadata.detect_source(r.url)
+            ents = self.storage.get_remote_ids(r.name)
+            if not ents: continue
+            entries.extend([(s, e) for e in ents])
 
-        warnings.warn("unimplemented slop")
-        return list(ids_local.intersection(ids_worktree))
+        # check worktree
+        worktree_entries: dict[str, Entry] = {}
+        for e in worktree_cache.worktree_load(self.worktree_dir):
+            assert e.id not in worktree_entries
+            worktree_entries[e.id] = e
+
+
+        output: set[tuple[metadata.Source, str, ListItemFlag]] = set()
+        if cached:
+            output.update([(*e, ListItemFlag.CACHED) for e in entries])
+
+        worktree_keys = worktree_entries.keys()
+        worktree_set = set(worktree_keys)
+        entries_ids = [e[1] for e in entries]
+        entries_set = set(entries_ids)
+        matching_set = worktree_set & entries_set
+
+        assert len(worktree_keys) == len(worktree_set) and len(entries_ids) == len(entries_set)
+
+        missing_set = entries_set - worktree_set
+        overflowing_set = worktree_set - entries_set
+
+        if deleted:
+            for i in missing_set:
+                results = [e for e in entries if e[1] == i]
+                assert len(results) == 1
+                output.add((*results[0], ListItemFlag.DELETED))
+
+        if others:
+            for i in overflowing_set:
+                results = [e for e in entries if e[1] == i]
+                assert len(results) < 1
+                output.add((None, i, ListItemFlag.OTHERS))
+
+        if modified:
+            for i in matching_set:
+                results = [e for e in entries if e[1] == i]
+                assert len(results) == 1
+                ent_src = results[0][0]
+                ent_id = results[0][1]
+                if worktree_entries[i].title != self.storage.get_object(ent_src, ent_id).title:
+                    output.add((ent_src, ent_id, ListItemFlag.MODIFIED))
+
+        flat = {}
+        for o in output:
+            flat[o[:2]] = flat.get(o[:2], ListItemFlag.NONE) | o[2]
+        return [(*k, v) for k, v in flat.items()]
 
     # TODO: remoteS
     # strategy: dumb, ours, manual, theirs
@@ -346,8 +386,8 @@ class Mist:
         assert len(remotes) == 1, "not implemented"
         remote = remotes[0]
 
-        entries = self.get_cached_remote_entries(remote)
         source = metadata.detect_source(self.get_remote(remote).url)
+        entries = self.storage.get_remote_entries(source, remote)
 
         worktree_items = worktree_cache.worktree_load(self.worktree_dir)
         missing_ids = set([e.id for e in entries]).difference(set([e.id for e in worktree_items]))
@@ -378,7 +418,7 @@ class Mist:
 
         self.init(destination_dir)
         self.set_working_dir(os.path.abspath(destination_dir))
-        remote = origin or self.config.active.get("clone.defaultRemoteName", "origin")
+        remote = origin or self.config.active.get("clone.defaultRemoteName", _DEFAULT_REMOTE_NAME)
         self.remote_add(remote, url)
         self.fetch(remote, tags=tags)
         self.merge([remote])
@@ -400,6 +440,8 @@ class Mist:
         remote = Remote()
         remote.name = name
         remote.url = self.config.local.get(f"{section_name}.url")
+        remote.start = self.config.local.getint(f"{section_name}.start", None)
+        remote.end = self.config.local.getint(f"{section_name}.end", None)
 
         return remote
 
