@@ -1,11 +1,15 @@
 <div align="center">
 
 # mist
+<img alt="logo" src="assets/logo.svg" width="30%"/>
+
 **m**usic **i**ngestion & **s**torage **t**ool
 
 ![](https://img.shields.io/badge/code%20style-freestyle-313131.svg?style=flat-square)
 ![](https://img.shields.io/badge/quality-ass-1fb311.svg?style=flat-square)
 ![](https://img.shields.io/badge/tests-passing%20eventually-ffd700?style=flat-square)
+
+![](https://img.shields.io/badge/Python-3.13-313131.svg?style=flat-square)
 </div>
 
 ---
@@ -59,15 +63,21 @@ pip install .
 - `core.color`
 - `core.version`
 - `core.concurrency`
+- `core.retries`
+- `core.delay`
 
 - `clone.defaultRemoteName`
 
 - `remote.<name>.url`
+- `remote.<name>.start`
+- `remote.<name>.end`
+- 
+- `image.size`
+- `image.format`
+- `image.adjustment`
 
 ### TODO:
 - `remote.<name>.skipFetchAll`
-- `remote.<name>.start`
-- `remote.<name>.end`
 - `remote.<name>.items`
 
 **TODO:** use yaptex

@@ -1,11 +1,12 @@
 import os
+import warnings
+from enum import Enum
 from functools import wraps
 from typing import AnyStr, Callable
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from textwrap import dedent, indent
 import re
 
-from . import log
 
 def url_strip_utm(url: str) -> AnyStr:
     utm_parameters = {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"}
@@ -131,3 +132,15 @@ class FileCache:
             return decorator(func)
 
         return decorator
+
+class MistEnum(Enum):
+    @property
+    def name(self):
+        return self._name_.lower()
+
+    @classmethod
+    def _missing_(cls, value):
+        for member in cls:
+            if member.name.lower() == str(value).lower():
+                return member
+        return None

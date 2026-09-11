@@ -1,3 +1,4 @@
+import logging
 import os
 from enum import Enum, auto
 from pprint import pprint, pformat
@@ -6,36 +7,25 @@ from urllib.parse import urlparse, urlsplit
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import inspect
+import time
 
+from .scrape_utils import assert_single, RateLimitHitError
 from .. import Entry
-from ..log import spawn_logger
-from ..utils import indent_list
+from ..utils import indent_list, MistEnum
 
-logger = spawn_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # TODO: match user/artist
 
 class NotSupported(Exception):
     pass
 
-class Source(Enum):
+class Source(MistEnum):
     LOCAL = auto()
     YOUTUBE = auto()
     SOUNDCLOUD = auto()
     LASTFM = auto()
     BANDCAMP = auto()
-
-    # MistEnum:
-    @property
-    def name(self):
-        return self._name_.lower()
-
-    @classmethod
-    def _missing_(cls, value):
-        for member in cls:
-            if member.name.lower() == str(value).lower():
-                return member
-        return None
 
 def detect_source(url) -> Source:
     parsed_url = urlsplit(url)
@@ -92,7 +82,8 @@ class MetadataConnector(Generic[TTrack, TArtist], ABC):
     def get_artist(self, track: TTrack) -> TArtist:
         pass
 
-    def get_track_artwork(self, track: TTrack) -> str | bytes:
+    @abstractmethod
+    def get_track_artwork(self, track: TTrack) -> str:
         pass
 
     # endregion
@@ -182,17 +173,19 @@ def _build_registry():
 
     def lastfm_to_soundcloud_matcher(data: Data):
         # lfm links should be set
-        found = [l for l in data.lfm_artist_links if urlsplit(l).hostname == "soundcloud.com"]
+        found = data.lfm_artist_links and [l for l in data.lfm_artist_links if urlsplit(l).hostname == "soundcloud.com"]
         if not found:
             return None
+
         # this line is fucking with my PyCharm 2025.2.1.1, erm *was*
-        return sc.match_track_by_artist(data.lfm_title, found[0])
+        return sc.match_track_by_artist(data.lfm_title, assert_single(found))
 
     def youtube_to_soundcloud_matcher(data: Data):
         # yt links should be set but yt may have failed
         found = data.yt_channel_links and [l for l in data.yt_channel_links if urlsplit(l).hostname == "soundcloud.com"]
         if not found:
             return None
+
         assert len(found) == 1, "which sc link do i use (╯°□°）╯︵ ┻━┻"
         return sc.match_track_by_artist(data.yt_title, found[0])
 
@@ -204,20 +197,38 @@ _build_registry()
 
 # TODO: utilize cache
 
-def enrich(data: Data, track: Entry, item,  using_connector: MetadataConnector) -> Data:
+def enrich(data: Data, track: Entry, item,  using_connector: MetadataConnector, retries: int = 3, delay: int = 5) -> Data:
     assert using_connector
 
     clean: bool = True
 
+    def retry(operation: Callable[[], Any]) -> Any:
+        current_delay = delay
+        for attempt in range(0, retries + 1):
+            try:
+                return operation()
+            except RateLimitHitError:
+                if attempt != retries:
+                    logger.warning(f"rate limit hit: attempt {attempt + 1} of {retries + 1}, sleeping for {current_delay} seconds...")
+                    time.sleep(current_delay)
+                    current_delay *= 2
+                    continue
+                else:
+                    logger.error(f"rate limit hit: attempt {attempt + 1} of {retries + 1}, attempts depleted...")
+                    raise
+
+        assert False, "unreachable"
+
     def try_enrich(lmbd: Callable[[], Any]):
         nonlocal clean
         try:
-            return lmbd()
-        except NotSupported:
+            return retry(lmbd)
+        except NotSupported as e:
+            logger.debug(f"connector '{type(using_connector).__name__}' deos not support ({type(e).__name__}: {e}):\n{str(inspect.getsourcelines(lmbd)[0][0]).strip()}")
             return None
         except Exception as e:
             clean = False
-            logger.error(f"connector '{type(using_connector).__name__}' failed during:\n{str(inspect.getsourcelines(lmbd)[0][0]).strip()}\n{type(e).__name__}: {e}")
+            logger.error(f"connector '{type(using_connector).__name__}' failed ({type(e).__name__}: {e}):\n{str(inspect.getsourcelines(lmbd)[0][0]).strip()}")
             logger.debug(e, exc_info=True)
             return None
 
@@ -225,6 +236,7 @@ def enrich(data: Data, track: Entry, item,  using_connector: MetadataConnector) 
     track_title =  try_enrich(lambda: using_connector.get_track_title(item))
     track_tags = try_enrich(lambda: using_connector.get_track_tags(item))
     track_genre = try_enrich(lambda: using_connector.get_track_genre(item))
+    track_artwork = try_enrich(lambda: using_connector.get_track_artwork(item))
 
     artist = try_enrich(lambda: using_connector.get_artist(item))
     artist_name = None
@@ -260,6 +272,7 @@ def enrich(data: Data, track: Entry, item,  using_connector: MetadataConnector) 
             track.artist_links.extend(artist_links)
         else:
             track.artist_links = artist_links
+    track.artwork = track.artwork or track_artwork
 
     if clean:
         if not track.visited:
@@ -270,7 +283,7 @@ def enrich(data: Data, track: Entry, item,  using_connector: MetadataConnector) 
 
     return data
 
-def obtain(source: Source, entry: str):
+def obtain(source: Source, entry: str, retries: int = 0, delay: int = 10):
     logger.debug(f"collecting metadata for '{entry}'")
 
     visited: set[tuple[Source, str]] = set()
@@ -287,7 +300,12 @@ def obtain(source: Source, entry: str):
 
         connector = connectors.get_node(source)
         logger.debug(f"visiting {source.name}")
-        data = enrich(data, track, item, connector)
+
+        # some crucial data are generated during this step, so we cannot use Entry.visited to avoid redoing work
+        assert connector
+        data = enrich(data, track, item, connector,
+                      retries=retries,
+                      delay=delay)
 
         visited.add((source, item))
 

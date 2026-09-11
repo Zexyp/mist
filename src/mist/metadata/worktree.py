@@ -1,11 +1,12 @@
+import logging
 import os
+import warnings
 
-from .. import Entry
-from ..log import spawn_logger
+from .. import FileEntry
 
-logger = spawn_logger(__name__)
+logger = logging.getLogger(__name__)
 
-def worktree_load(directory: str) -> list[Entry]:
+def worktree_load(directory: str) -> list[FileEntry]:
     logger.debug("loading working tree")
 
     output = []
@@ -13,7 +14,7 @@ def worktree_load(directory: str) -> list[Entry]:
         if not os.path.isfile(file):
             continue
 
-        entry = Entry()
+        entry = FileEntry()
         #filename = os.fsdecode(file)
         parts = file.rsplit(".", maxsplit=2)
         if len(parts) != 3:
@@ -22,9 +23,11 @@ def worktree_load(directory: str) -> list[Entry]:
 
         entry.id = parts[1]
         entry.title = parts[0]
+        entry.file = file
 
-        # TODO: extract tags here
+        warnings.warn("TODO: extract tags here")
 
         output.append(entry)
 
+    logger.debug(f"loaded {len(output)} entries")
     return output

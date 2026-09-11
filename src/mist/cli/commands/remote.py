@@ -1,17 +1,21 @@
 import argparse
+import logging
 import warnings
 
+from ..cli_utils import summon_subcommand
 from ..completors import RemoteCompleter
-from ... import Mist, log
+from ... import Mist
 from .. import cli_utils
 
+logger = logging.getLogger(__name__)
+
 def build_parser_add(subparsers, mist: Mist):
-    parser = subparsers.add_parser("add")
+    parser = summon_subcommand(subparsers, "add")
     parser.add_argument("name", metavar="<name>")
     parser.add_argument("url", metavar="<url>")
 
     def func(args):
-        log.debug(f"batu add {args.name} {args.url}")
+        logger.debug(f"batu add {args.name} {args.url}")
         mist.remote_add(args.name, args.url)
 
     parser.set_defaults(func=func, parser=parser)
@@ -19,7 +23,7 @@ def build_parser_add(subparsers, mist: Mist):
 
 
 def build_parser_rename(subparsers, mist: Mist):
-    parser = subparsers.add_parser("rename")
+    parser = summon_subcommand(subparsers, "rename")
     parser.add_argument("old", metavar="<old>").completer = RemoteCompleter(mist)
     parser.add_argument("new", metavar="<new>")
 
@@ -30,7 +34,7 @@ def build_parser_rename(subparsers, mist: Mist):
     return parser
 
 def build_parser_remove(subparsers, mist: Mist):
-    parser = subparsers.add_parser("remove", aliases=["rm"])
+    parser = summon_subcommand(subparsers, "remove", aliases=["rm"])
     parser.add_argument("name", metavar="<name>").completer = RemoteCompleter(mist)
 
     def func(args):
@@ -40,7 +44,7 @@ def build_parser_remove(subparsers, mist: Mist):
     return parser
 
 def build_parser_get_url(subparsers, mist: Mist):
-    parser = subparsers.add_parser("get-url")
+    parser = summon_subcommand(subparsers, "get-url")
     parser.add_argument("name", metavar="<name>").completer = RemoteCompleter(mist)
 
     def func(args):
@@ -50,7 +54,7 @@ def build_parser_get_url(subparsers, mist: Mist):
     return parser
 
 def build_parser_set_url(subparsers, mist: Mist):
-    parser = subparsers.add_parser("set-url")
+    parser = summon_subcommand(subparsers, "set-url")
     parser.add_argument("name", metavar="<name>").completer = RemoteCompleter(mist)
     parser.add_argument("newurl", metavar="<newurl>")
 
@@ -61,7 +65,7 @@ def build_parser_set_url(subparsers, mist: Mist):
     return parser
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("remote", description="Manage set of tracked repositories")
+    parser = summon_subcommand(subparsers, "remote", description="Manage set of tracked repositories")
     parser.add_argument("-v", "--verbose", action="store_true")
 
     def func(args):

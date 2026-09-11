@@ -1,17 +1,26 @@
 # mist - another stupid content tracker
-
+import logging
 import os
+import sys
 import warnings
 from dataclasses import dataclass
-from pprint import pprint
+from enum import Flag, auto
+from pprint import pprint, pformat
 
 _package_name = __package__
+logger = logging.getLogger(__name__)
+
+class DistinguishedId:
+    source: str = None
+    id: str = None
+
 # entry can be just a remote snapshot
 # or a local file description
 # or be full of metadata
 @dataclass
 class Entry:
     id: str = None
+    index: int = None
     title: str = None
     url: str = None
     name: str = None
@@ -21,16 +30,29 @@ class Entry:
     genre: str = None
     artist_links: list[tuple[str, str]] = None
     visited: set[str] = None
+    artwork: str = None
+
+class FileEntry(Entry):
+    file: str = None
 
 from . import files
 from .config import ConfigReader, ConfigStack
 from .errors import MistError
-from . import log
 from . import config
 from .messages import *
 from . import shenanigans, metadata
 from .utils import url_strip_utm, url_strip_share_identifier, sanitize_filename
-from .metadata import local as local_cache, worktree as worktree_cache
+from .metadata import worktree as worktree_cache
+from .storage import Storage
+
+class ListItemFlag(Flag):
+    NONE = 0
+    CACHED = auto()
+    DELETED = auto()
+    MODIFIED = auto()
+    OTHERS = auto()
+
+_DEFAULT_REMOTE_NAME = "origin"
 
 def _find_repository_dir(start: str, soft: bool = True) -> str | None:
     assert os.path.isabs(start)
@@ -59,11 +81,14 @@ def _merge_entry(original: Entry, new: Entry, prune_tags: bool, ignore_tags: boo
         original.name = new.name
         original.title = new.title
         original.genre = new.genre
+        original.artwork = new.artwork
 
-    if not ignore_tags:
-        if not prune_tags and set(original.tags or []).difference(set(new.tags or [])):
-            raise MistError("tags would be removed")
-        original.tags = new.tags
+    if new.tags and not ignore_tags:
+        # do we care about order?
+        if original.tags and not prune_tags:
+            original.tags = list({*original.tags, *new.tags})
+        else:
+            original.tags = list(set(new.tags))
 
     if new.visited:
         if original.visited:
@@ -73,16 +98,96 @@ def _merge_entry(original: Entry, new: Entry, prune_tags: bool, ignore_tags: boo
 
     return original
 
+def _configure_logger(cfg: ConfigReader):
+    # TODO: config file
+    debug = cfg.getbool("core.debug", False)
+    from . import log
+
+    match cfg.get("core.color", "auto"):
+        case "off":
+            log.deinit_colors()
+        case "force":
+            log.init_colors()
+        case "auto":
+            if sys.stdin.isatty():
+                log.init_colors()
+        case _:
+            assert False
+
+    logger.setLevel(logging.DEBUG if debug else logging.WARNING)
+    logger.debug("reconfigured loggers")
+
+def _parse_image_options(cfg: dict[str, str]) -> dict:
+    result = {}
+    if "size" in cfg:
+        parts = tuple(map(int, [p.strip() for p in cfg["size"].split("x")]))
+        assert len(parts) == 2
+        result["size"] = parts
+    if "format" in cfg:
+        fmt = cfg["format"].lower()
+        fmt_details = None
+        if "@" in fmt:
+            fmt, fmt_details = fmt.split("@", maxsplit=1)
+        result["format"] = fmt
+        available_bits = None
+        match fmt:
+            case "jpeg" | "jpg" | "jfif":
+                available_bits = {
+                    "l": "L",
+                    "rgb": "RGB",
+                }
+            case "png":
+                available_bits = {
+                    "i": "P",
+                    "ia": "PA",
+                    "l": "L",
+                    "la": "LA",
+                    "rgb": "RGB",
+                    "rgba": "RGBA",
+                }
+            case "none":
+                pass
+            case _:
+                assert False
+
+        result["format"] = fmt
+        if fmt != "none" and fmt_details:
+            fmt_details_parts = [p.strip() for p in fmt_details.split(";")]
+            while fmt_details_parts:
+                part = fmt_details_parts.pop(0)
+                match part:
+                    case part if part in available_bits:
+                        result["convert"] = available_bits[part]
+                    case part if part.endswith("%") or part.startswith("cl"):
+                        result["compression"] = int(part.removeprefix("cl").removesuffix("%"))
+                    case part if part in ["4:0:0", "4:2:0", "4:2:2", "4:4:4"]:
+                        result["subsampling"] = part
+                    case _:
+                        assert False
+    if "adjustment" in cfg:
+        adjustment = cfg["adjustment"].lower()
+        assert adjustment in ("zoom", "scaled", "crop", "stretch")
+        result["adjustment"] = adjustment
+    else:
+        # default adjustment
+        result["adjustment"] = "scaled"
+
+    return result
+
 @dataclass
 class Remote:
     name: str = None
     url: str = None
+    start: int = None
+    end: int = None
 
 class Mist:
     def __init__(self):
+        self.worktree_dir: str = None
         self.working_dir: str = None
         self.repository_dir: str = None
         self.config: ConfigStack = ConfigStack()
+        self.storage: Storage = Storage()
 
     def set_working_dir(self, working_dir):
         assert os.path.isdir(working_dir)
@@ -90,41 +195,45 @@ class Mist:
         self.working_dir = working_dir
         self.config.load()
 
-        log.configure(self.config.active)
+        _configure_logger(self.config.active)
 
         if found_repository := _find_repository_dir(working_dir):
-            log.debug(f"found repository dir '{found_repository}'")
+            logger.debug(f"found repository dir '{found_repository}'")
             self.set_repository_dir(found_repository)
 
-        log.debug(f"working dir '{self.working_dir}'")
+        logger.debug(f"working dir '{self.working_dir}'")
 
     def set_repository_dir(self, repository_dir):
         assert os.path.isdir(repository_dir)
 
         self.repository_dir = repository_dir
+        # TODO: worktree redirection
+        self.worktree_dir = os.path.dirname(repository_dir)
         self._assert_repository()
 
         # only set if in repo
         self.config.file_set(
             repository_dir=self.repository_dir,
-            working_dir=self.working_dir,
         )
         self.config.load()
 
-        log.configure(self.config.active)
+        self.storage.init(repodir=self.repository_dir)
 
+        _configure_logger(self.config.active)
+
+        # sanity check
         from importlib.metadata import version
-        if self.config.local.get("core.version") != version(_package_name):
-            log.warning("repository was created using a different Mist version")
+        if (found_version := self.config.local.get("core.version", None)) != (current_version := version(_package_name)):
+            logger.warning(f"repository was created using a different Mist version (repository: {found_version}, current: {current_version})")
 
-        log.debug(f"repository dir '{self.repository_dir}'")
+        logger.debug(f"repository dir '{self.repository_dir}'")
 
     def is_repository(self):
         return self.repository_dir is not None and os.path.isdir(self.repository_dir) and os.path.basename(self.repository_dir) == files.DIR_REPOSITORY
 
     def init(self, directory: str) -> str:
         if self.is_repository():
-            raise NotImplementedError("repository reinitialization")
+            raise NotImplementedError("init: repository reinitialization")
 
         target_dir = os.path.join(os.path.abspath(directory), files.DIR_REPOSITORY)
         os.makedirs(target_dir)
@@ -139,11 +248,6 @@ class Mist:
 
         return target_dir
 
-    def _get_cache_file(self, remote_name: str, cache_type: str) -> str:
-        result = os.path.join(self.repository_dir, files.DIR_REPOSITORY_CACHE, remote_name, cache_type)
-        os.makedirs(os.path.dirname(result), exist_ok=True)
-        return result
-
     def fetch(self, remote: str, tags: bool = False,
               dry_run: bool = False,
               force: bool = False,
@@ -152,21 +256,29 @@ class Mist:
               progress: Callable[[str], None] = None) -> list[Entry]:
         """returns a list of locally available entries"""
         self._assert_remote(remote)
+        remote_cfg = self.get_remote(remote)
 
-        log.debug(f"fetch {force=}, {prune=}, {prune_tags=}")
+        logger.debug(f"fetch {force=}, {prune=}, {prune_tags=}")
 
         section_name = self._remote_section_name(remote)
 
         list_url = self.config.local.get(f"{section_name}.url")
+        source = metadata.detect_source(remote_cfg.url)
         if tags:
             items = shenanigans.get_entries(list_url,
                                             progress=progress,
-                                            max_concurrency=self._get_concurrency())
+                                            max_concurrency=self._get_concurrency(),
+                                            retries=self.config.active.getint("core.retries", 2),
+                                            delay=self.config.active.getint("core.delay", 5),
+                                            start=remote_cfg.start, end=remote_cfg.end)
         else:
             items = shenanigans.get_entries_fast(list_url,
-                                                 progress=progress)
+                                                 progress=progress,
+                                                 start=remote_cfg.start, end=remote_cfg.end)
 
-        loaded = not prune and self.get_remote_entries(remote) or []
+        loaded = not prune and self.storage.get_remote_entries(source, remote) or []
+
+        # TODO: abstract
 
         merged = []
         if loaded:
@@ -184,41 +296,121 @@ class Mist:
         loaded = merged
 
         if not dry_run:
-            entries_file = self._get_cache_file(remote, files.CACHE_TYPE_ENTRIES)
-            local_cache.local_save(entries_file, loaded)
+            self.storage.save_remote_entries_direct(source, remote, loaded)
 
         return loaded
 
-    def get_remote_entries(self, remote: str) -> list[Entry] | None:
-        self._assert_remote(remote)
-
-        entries_file = self._get_cache_file(remote, files.CACHE_TYPE_ENTRIES)
-        if not os.path.exists(entries_file):
-            return None
-        return local_cache.local_load(entries_file)
+    def get_all_cached_objects(self) -> list[Entry]:
+        raise NotImplementedError
 
     def list_remote(self, remote_url: str) -> list[Entry]:
         entries = shenanigans.get_entries_fast(_sanitize_url(remote_url),
-                                               progress=lambda m: log.debug(m))
+                                               progress=lambda m: logger.debug(m))
         return entries
 
-    def merge(self, remote: str, progress: Callable = None) -> list[Entry]:
+    # TODO: add flag
+    def list_files(self,
+                   cached: bool = False,
+                   modified: bool = False,
+                   deleted: bool = False,
+                   others: bool = False) -> list[tuple[metadata.Source, str, ListItemFlag]]:
+        # deleted also means missing
+        # technical dept accumulation doohickey can be found here
+        self._assert_repository()
+
+        # hord all the remote data
+        remotes = self.get_remotes()
+        entries: list[tuple[metadata.Source, str]] = []
+        for r in remotes:
+            s = metadata.detect_source(r.url)
+            ents = self.storage.get_remote_ids(r.name)
+            if not ents: continue
+            entries.extend([(s, e) for e in ents])
+
+        # check worktree
+        worktree_entries: dict[str, Entry] = {}
+        for e in worktree_cache.worktree_load(self.worktree_dir):
+            assert e.id not in worktree_entries
+            worktree_entries[e.id] = e
+
+
+        output: set[tuple[metadata.Source, str, ListItemFlag]] = set()
+        if cached:
+            output.update([(*e, ListItemFlag.CACHED) for e in entries])
+
+        worktree_keys = worktree_entries.keys()
+        worktree_set = set(worktree_keys)
+        entries_ids = [e[1] for e in entries]
+        entries_set = set(entries_ids)
+        matching_set = worktree_set & entries_set
+
+        assert len(worktree_keys) == len(worktree_set) and len(entries_ids) == len(entries_set)
+
+        missing_set = entries_set - worktree_set
+        overflowing_set = worktree_set - entries_set
+
+        if deleted:
+            for i in missing_set:
+                results = [e for e in entries if e[1] == i]
+                assert len(results) == 1
+                output.add((*results[0], ListItemFlag.DELETED))
+
+        if others:
+            for i in overflowing_set:
+                results = [e for e in entries if e[1] == i]
+                assert len(results) < 1
+                output.add((None, i, ListItemFlag.OTHERS))
+
+        if modified:
+            for i in matching_set:
+                results = [e for e in entries if e[1] == i]
+                assert len(results) == 1
+                ent_src = results[0][0]
+                ent_id = results[0][1]
+                if worktree_entries[i].title != self.storage.get_object(ent_src, ent_id).title:
+                    output.add((ent_src, ent_id, ListItemFlag.MODIFIED))
+
+        flat = {}
+        for o in output:
+            flat[o[:2]] = flat.get(o[:2], ListItemFlag.NONE) | o[2]
+        return [(*k, v) for k, v in flat.items()]
+
+    # TODO: remoteS
+    # strategy: dumb, ours, manual, theirs
+    def merge(self, remotes: list[str], progress: Callable = None, strategy: str = None) -> list[Entry]:
         if progress:
-            raise NotImplementedError("merge progress reporting not implemented")
+            raise NotImplementedError("merge: progress reporting not implemented")
+        if strategy:
+            raise NotImplementedError("merge: strategy not implemented")
 
-        entries = self.get_remote_entries(remote)
+        assert len(remotes) == 1, "not implemented"
+        remote = remotes[0]
+
         source = metadata.detect_source(self.get_remote(remote).url)
+        entries = self.storage.get_remote_entries(source, remote)
 
-        worktree_items = worktree_cache.worktree_load(self.working_dir)
+        worktree_items = worktree_cache.worktree_load(self.worktree_dir)
         missing_ids = set([e.id for e in entries]).difference(set([e.id for e in worktree_items]))
+
+        image_options = _parse_image_options(self.config.active.getsub("image."))
+        logger.debug("image options:\n" + pformat(image_options))
 
         entries_to_download = [e for e in entries if e.id in missing_ids]
         if entries_to_download:
             shenanigans.download_entries(source, entries_to_download,
-                                         destination_dir=self.working_dir,
-                                         max_concurrency=self._get_concurrency())
+                                         destination_dir=self.worktree_dir,
+                                         max_concurrency=self._get_concurrency(),
+                                         image_options=image_options)
         return entries_to_download
 
+    def merge_continue(self):
+        raise NotImplementedError
+
+    def merge_abort(self):
+        raise NotImplementedError
+
+    def merge_quit(self):
+        raise NotImplementedError
 
     def clone(self, url: str, destination_dir: str = None, origin: str = None, tags: bool = False):
         url = _sanitize_url(url)
@@ -226,10 +418,10 @@ class Mist:
 
         self.init(destination_dir)
         self.set_working_dir(os.path.abspath(destination_dir))
-        remote = origin or self.config.active.get("clone.defaultRemoteName", "origin")
+        remote = origin or self.config.active.get("clone.defaultRemoteName", _DEFAULT_REMOTE_NAME)
         self.remote_add(remote, url)
         self.fetch(remote, tags=tags)
-        self.merge(remote)
+        self.merge([remote])
 
     def get_remotes(self) -> list[Remote]:
         self._assert_repository()
@@ -248,27 +440,10 @@ class Mist:
         remote = Remote()
         remote.name = name
         remote.url = self.config.local.get(f"{section_name}.url")
+        remote.start = self.config.local.getint(f"{section_name}.start", None)
+        remote.end = self.config.local.getint(f"{section_name}.end", None)
 
         return remote
-
-    @staticmethod
-    def _remote_section_name(mame: str) -> str:
-        return f"remote.{mame}"
-
-    def _assert_repository(self):
-        if not self.is_repository():
-            raise MistError(MSG_NOT_A_REPOSITORY)
-
-    # now operates on local config only, which make sense ig
-    def _assert_remote(self, name: str):
-        self._assert_repository()
-
-        if name is None:
-            raise MistError(MSG_NO_REMOTE)
-
-        section_name = self._remote_section_name(name)
-        if not self.config.local.has(f"{section_name}.", sub=True):
-            raise MistError(MSG_NO_SUCH_REMOTE.format(name=name))
 
     def remote_add(self, name: str, url: str):
         url = _sanitize_url(url)
@@ -312,11 +487,6 @@ class Mist:
         self.config.local.set(f"{section_name}.url", new_url)
         self.config.local.save()
 
-    def _get_active_remote_storage_file(self) -> str:
-        self._assert_repository()
-
-        return os.path.join(self.repository_dir, files.FILE_REPOSITORY_REMOTE)
-
     def active_remote_name_get(self) -> str | None:
         self._assert_repository()
 
@@ -334,3 +504,27 @@ class Mist:
 
     def _get_concurrency(self) -> int:
         return self.config.local.getint("core.concurrency", os.cpu_count())
+
+    @staticmethod
+    def _remote_section_name(mame: str) -> str:
+        return f"remote.{mame}"
+
+    def _assert_repository(self):
+        if not self.is_repository():
+            raise MistError(MSG_NOT_A_REPOSITORY)
+
+    # now operates on local config only, which make sense ig
+    def _assert_remote(self, name: str):
+        self._assert_repository()
+
+        if name is None:
+            raise MistError(MSG_NO_REMOTE)
+
+        section_name = self._remote_section_name(name)
+        if not self.config.local.has(f"{section_name}.", sub=True):
+            raise MistError(MSG_NO_SUCH_REMOTE.format(name=name))
+
+    def _get_active_remote_storage_file(self) -> str:
+        self._assert_repository()
+
+        return os.path.join(self.repository_dir, files.FILE_REPOSITORY_REMOTE)

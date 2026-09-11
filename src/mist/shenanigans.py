@@ -1,4 +1,5 @@
 import concurrent.futures
+import logging
 import os
 from dataclasses import dataclass
 from typing import Callable
@@ -8,17 +9,31 @@ from yt_dlp import YoutubeDL, DownloadError
 from pprint import pprint, pformat
 import re
 
-from .log import spawn_logger
+from yt_dlp.postprocessor import PostProcessor
+
 from .metadata import Source
 from .utils import strip_ansi, sanitize_filename
 from . import Entry
-from . import log
+
+class ShenanigansError(Exception):
+    pass
 
 _DUMP_DATA = False
 
-logger = spawn_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # TODO: suppress ytdlp warning
+
+class MetadataPostProcessor(PostProcessor):
+    def __init__(self, data: Entry, image_options: dict = None):
+        super().__init__()
+        self.data = data
+        self.image_options = image_options
+
+    def run(self, information):
+        from . import tags
+        tags.apply(information["filepath"], self.data, image_options=self.image_options)
+        return [], information
 
 class BaseLogger:
     _PREFIX: str = "[ytdlp] "
@@ -100,29 +115,38 @@ options_download: dict = {
     "logger": BaseLogger(),
     "extract_audio": True,
     "format": "bestaudio",
-
+    "js_runtimes": {"node": {}},
     "outtmpl": "%(title)s.%(id)s.%(ext)s",
+    'postprocessors': [{
+        'key': 'FFmpegExtractAudio',
+        'preferredcodec': 'mp3',
+    }],
 }
 
 def get_playlist_title(url: str) -> str:
     try:
+        info = None
         with YoutubeDL(options_playlist_title) as ydl:
             info = ydl.extract_info(url, download=False)
     except DownloadError as e:
-        print(e)
+        raise ShenanigansError(e)
 
     assert info["_type"] == "playlist"
     return info["title"]
 
-def get_entries(url: str, progress: Callable[[str], None] = None, max_concurrency: int | None = None) -> list[Entry]:
+def get_entries(url: str, progress: Callable[[str], None] = None, max_concurrency: int | None = None, retries: int = 0, delay: int = 0,
+                start: int | None = None,
+                end: int | None = None) -> list[Entry]:
     if max_concurrency is not None:
         logger.debug(f"concurrency: {max_concurrency}")
 
-    entries = get_entries_fast(url, progress=progress)
+    entries = get_entries_fast(url, progress=progress,
+                               start=start,
+                               end=end)
 
     def metadata_collection(e: Entry):
         from . import metadata
-        oe = metadata.obtain(metadata.detect_source(url), e.id)
+        oe = metadata.obtain(metadata.detect_source(url), e.id, retries=retries, delay=delay)
         oe.id = e.id
         return oe
 
@@ -138,20 +162,30 @@ def get_entries(url: str, progress: Callable[[str], None] = None, max_concurrenc
 
     return output
 
-def get_entries_fast(url: str, progress: Callable[[str], None] = None) -> list[Entry]:
+def get_entries_fast(url: str, progress: Callable[[str], None] = None,
+                     start: int | None = None,
+                     end: int | None = None) -> list[Entry]:
     opts = dict(options_entries_flat)
     if progress:
         logger.debug("progress callback will be used")
         opts["logger"] = YtPageProgressLogger(progress)
 
 
-    opts["progress_hooks"] = [_emtpy_hook],
+    opts["progress_hooks"] = [_emtpy_hook]
+    if start is not None:
+        opts["playliststart"] = start
+    if end is not None:
+        opts["playlistend"] = end
 
     try:
+        info = None
         with YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
     except DownloadError as e:
-        print(e)
+        raise ShenanigansError(e)
+
+    if not info or 'entries' not in info:
+        raise ShenanigansError("unable to use entries")
 
     assert info["_type"] == "playlist"
     if _DUMP_DATA:
@@ -160,9 +194,6 @@ def get_entries_fast(url: str, progress: Callable[[str], None] = None) -> list[E
     for e in info["entries"]:
         output.append(extract_flat_entry(e))
     return output
-
-def get_item(url: str, progress: Callable) -> str:
-    raise NotImplementedError
 
 def extract_flat_entry(e: dict) -> Entry:
     entry = Entry(id=e["id"], url=e["url"])
@@ -176,7 +207,8 @@ def extract_flat_entry(e: dict) -> Entry:
 
     return entry
 
-def download_entries(platform: Source, entries: list[Entry], destination_dir: str, max_concurrency: int | None = None):
+def download_entries(platform: Source, entries: list[Entry], destination_dir: str, max_concurrency: int | None = None,
+                     image_options: dict = None):
     logger.debug(f"destination: {destination_dir}")
     if max_concurrency is not None:
         logger.debug(f"concurrency: {max_concurrency}")
@@ -196,13 +228,12 @@ def download_entries(platform: Source, entries: list[Entry], destination_dir: st
 
         try:
             with YoutubeDL(lopts) as ydl:
+                ydl.add_post_processor(MetadataPostProcessor(item, image_options=image_options))
                 ydl.download([url])
         except DownloadError as e:
-            log.error(f"filed to download entry '{item.id}': {e}")
-            log.exception(e)
-
-
-        # TODO: tag
+            logger.error(f"filed to process entry '{item.id}': {e}")
+            logger.debug(e, exc_info=True)
+            # TODO: raise
 
     output = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrency) as executor:

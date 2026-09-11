@@ -1,11 +1,16 @@
 import argparse
+import logging
+import traceback
 from typing import Callable
 from unittest import case
 
 import mist
+from ..cli_utils import summon_subcommand
 from ... import Mist, MistError
 from ...config import ConfigReader
 from ...messages import *
+
+logger = logging.getLogger(__name__)
 
 # TODO: add system level
 # TODO: rename-section, remove-section
@@ -44,7 +49,7 @@ def _augment_with_types(parser):
 #def _augment_for_read(parser):
 
 def build_parser_list(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("list")
+    parser = summon_subcommand(subparsers, "list")
     _augment_with_types(parser)
 
     def func(args):
@@ -56,7 +61,7 @@ def build_parser_list(subparsers, mist: Mist) -> argparse.ArgumentParser:
     return parser
 
 def build_parser_get(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("get")
+    parser = summon_subcommand(subparsers, "get")
     _augment_with_types(parser)
     parser.add_argument("name", metavar="<name>")
 
@@ -70,7 +75,7 @@ def build_parser_get(subparsers, mist: Mist) -> argparse.ArgumentParser:
     return parser
 
 def build_parser_set(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("set")
+    parser = summon_subcommand(subparsers, "set")
     _augment_with_types(parser)
     parser.add_argument("name", metavar="<name>")
     parser.add_argument("value", metavar="<value>")
@@ -84,7 +89,7 @@ def build_parser_set(subparsers, mist: Mist) -> argparse.ArgumentParser:
     return parser
 
 def build_parser_unset(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("unset")
+    parser = summon_subcommand(subparsers, "unset")
     _augment_with_types(parser)
     parser.add_argument("name", metavar="<name>")
 
@@ -97,22 +102,33 @@ def build_parser_unset(subparsers, mist: Mist) -> argparse.ArgumentParser:
     return parser
 
 def build_parser_edit(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("edit")
+    parser = summon_subcommand(subparsers, "edit")
     _augment_with_types(parser)
 
     def func(args):
         editor = mist.config.active.get("core.editor", None)
-        assert editor is not None
+        if editor is None:
+            raise MistError("no editor")
         cfg = _choose_cfg_write(mist, args.kind)
 
         import subprocess
-        subprocess.call([editor, cfg.path])
+
+        return_code = None
+        try:
+            return_code = subprocess.call([editor, cfg.path])
+        except Exception as e:
+            logger.error(f"cannot run '{editor}': {type(e).__name__}: {e}")
+            parser.exit(1)
+
+        if return_code != 0:
+            logger.error(f"There was a problem with the editor '{editor}'")
+            parser.exit(1)
 
     parser.set_defaults(func=func, parser=parser)
     return parser
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("config", description="Get and set repository or global options")  # locations: global, system, local, worktree?
+    parser = summon_subcommand(subparsers, "config", description="Get and set repository or global options")  # locations: global, system, local, worktree?
     parser.set_defaults(parser=parser)
 
     subparsers_config = parser.add_subparsers()

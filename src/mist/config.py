@@ -1,16 +1,17 @@
 import configparser
+import logging
 import os
 import pathlib
 from typing import Callable
 
 from . import files
-from .log import spawn_logger
 
 # todo: from collections import OrderedDict
 
 _SEPARATOR = "."
+_UNSET = object()
 
-logger = spawn_logger(__name__)
+logger = logging.getLogger(__name__)
 
 """not so reader after all"""
 class ConfigReader:
@@ -30,22 +31,31 @@ class ConfigReader:
         return any(k.startswith(key) for k in self.settings)
 
     # fixme: i'm crying
-    def get(self, key: str, default=None) -> str:
+    def get(self, key: str, default=_UNSET) -> str:
         result = self.settings.get(key, default)
+        if result is _UNSET:
+            raise KeyError(key)
+
         return result
 
-    def getbool(self, key: str, default=None) -> bool:
+    def getbool(self, key: str, default=_UNSET) -> bool:
         value = self.get(key, default)
-        match value:
+        if value is None:
+            return None
+
+        match value: # fuck upper case
             case "true" | "on" | "yes" | "1" | True:
                 return True
             case "false" | "off" | "no" | "0" | False:
                 return False
             case _:
-                raise ValueError("not convertable")
+                raise ValueError("not convertable to bool")
 
-    def getint(self, key: str, default=None) -> int:
+    def getint(self, key: str, default=_UNSET) -> int:
         value = self.get(key, default)
+        if value is None:
+            return None
+
         return int(value)
 
     def getsub(self, key: str) -> dict[str, str]:
@@ -67,15 +77,15 @@ class ConfigReader:
         match value:
             case str():
                 self.settings[key] = value
-            case int():
-                self.settings[key] = str(value)
             case bool():
                 self.settings[key] = "true" if value else "false"
+            case int():
+                self.settings[key] = str(value)
             case dict() if all(isinstance(k, str) for k in value):
                 for k, v in value.items():
                     self.set(f"{key}{k}", v)
             case _:
-                assert False, f"invalid value for set ({type(value).__name__})"
+                assert False, f"attempted to set invalid value ({type(value).__name__})"
 
     def unset(self, key: str, sub: bool = False):
         if not sub:
@@ -98,7 +108,7 @@ class ConfigReader:
 
         _write_ini(self.settings, self.path)
 
-        logger.debug(f"config write '{self.path}'")
+        logger.debug(f"write file '{self.path}'")
 
         self.commit()
 
@@ -108,7 +118,7 @@ class ConfigReader:
 
         self.settings = _read_ini(self.path)
 
-        logger.debug(f"config read '{self.path}'")
+        logger.debug(f"read file '{self.path}'")
 
         self.commit()
 
@@ -131,7 +141,7 @@ class ConfigStack:
         self.active.overlay(self.local)
         self.active.overlay(self.args)
 
-    def file_set(self, repository_dir=None, working_dir=None):
+    def file_set(self, repository_dir=None):
         if repository_dir is not None:
             self.local.path = os.path.join(repository_dir, files.FILE_REPOSITORY_CONFIG)
         else:
@@ -153,14 +163,17 @@ class ConfigStack:
 def _read_ini(path: str) -> dict[str, str]:
     assert os.path.isfile(path)
 
-    parser = configparser.ConfigParser()
+    parser = configparser.ConfigParser(allow_unnamed_section=True)
     parser.read(path)
     d = {}
     for section in parser.sections():
-        section_path = _SEPARATOR.join([p.strip("\"") for p in section.split(" ")])
+        if section == configparser.UNNAMED_SECTION:
+            section_path_prefix = ""
+        else:
+            section_path_prefix = _SEPARATOR.join([p.strip("\"") for p in section.split(" ")]) + _SEPARATOR
 
         for key, value in parser.items(section):
-            d[f"{section_path}{_SEPARATOR}{key}"] = value
+            d[f"{section_path_prefix}{key}"] = value
 
     return d
 
@@ -169,9 +182,20 @@ def _write_ini(settings: dict[str, str], path: str):
         _convert_to_ini(settings).write(file)
 
 def _convert_to_ini(d: dict[str, str]) -> configparser.ConfigParser:
-    parser = configparser.ConfigParser()
+    parser = configparser.ConfigParser(allow_unnamed_section=True)
+
+    unnamed = configparser.UNNAMED_SECTION
+
+    # force creation of the unnamed section
+    parser.read_string("__placeholder__ =\n")
+    del parser[unnamed]["__placeholder__"]
+
     for k, v in d.items():
-        key_parts = k.split(".", 1)
+        if _SEPARATOR not in k:
+            parser[unnamed][k] = v
+            continue
+
+        key_parts = k.split(_SEPARATOR, 1)
         section = key_parts[0]
         key = key_parts[1]
 

@@ -2,6 +2,7 @@ import sys
 import os
 import logging
 import traceback
+import warnings
 
 from . import _package_name
 
@@ -13,9 +14,7 @@ COL_CYAN   = ""
 
 SOUND_BASE_PATH = os.path.join(os.path.dirname(__file__), "res", "sounds")
 
-DEBUG: bool = False
-
-# TODO: exc_info=True
+logger = logging.getLogger(_package_name)
 
 def deinit_colors():
     global COL_RESET, COL_YELLOW, COL_DIM, COL_RED, COL_CYAN
@@ -31,7 +30,7 @@ def deinit_colors():
 
     colorama.deinit()
 
-    debug("colors deinitialized")
+    logger.debug("colors deinitialized")
 
 def init_colors():
     if not colorama:
@@ -47,79 +46,31 @@ def init_colors():
     COL_DIM = colorama.Style.DIM
     COL_CYAN = colorama.Fore.CYAN
 
-    debug("colors initialized")
+    logger.debug("colors initialized")
 
-def debug(msg):
-    if DEBUG:
-        print(COL_DIM + f"debug: {msg}" + COL_RESET, file=sys.stderr)
+def announce_optional_module_error(error: ImportError):
+    warnings.warn(f"optional module import error ({error.name})")
 
-def warning(msg):
-    print(COL_YELLOW + f"warning: {msg}" + COL_RESET, file=sys.stderr)
-
-def error(msg):
-    print(COL_RED + f"error: {msg}" + COL_RESET, file=sys.stderr)
-
-def fatal(msg):
-    print(COL_RED + f"fatal: {msg}" + COL_RESET, file=sys.stderr)
-
-def exception(exc):
-    for line in traceback.format_exception(exc):
-        debug(line.rstrip())
-
-def configure(cfg):
-    global DEBUG
-    DEBUG = cfg.getbool("core.debug", False)
-    match cfg.get("core.color", "auto"):
-        case "off":
-            pass
-        case "force":
-            init_colors()
-        case "auto":
-            if sys.stdin.isatty():
-                init_colors()
-        case _:
-            assert False
-
-    for l in [logging.getLogger(name) for name in logging.root.manager.loggerDict if name.startswith(_package_name)]:
-        l.setLevel(_get_current_level())
-    debug("reconfigured loggers")
-
-def _get_current_level():
-    return logging.DEBUG if DEBUG else logging.WARNING
 try:
     import colorama
 except ImportError as e:
     colorama = None
-    exception(e)
-    warning("color module import error (colorama)")
+    announce_optional_module_error(e)
 
 class CustomHandler(logging.Handler):
     def emit(self, record):
         message = self.format(record)
         match record.levelno:
             case _ if record.levelno <= logging.DEBUG:
-                debug(message)
+                print(COL_DIM + f"debug: {message}" + COL_RESET, file=sys.stderr)
             case _ if record.levelno <= logging.INFO:
-                print(message)
+                print(f"info: {message}")
             case _ if record.levelno <= logging.WARNING:
-                warning(message)
+                print(COL_YELLOW + f"warning: {message}" + COL_RESET, file=sys.stderr)
             case _ if record.levelno <= logging.ERROR:
-                error(message)
+                print(COL_RED + f"error: {message}" + COL_RESET, file=sys.stderr)
             case _:
-                fatal(message)
+                print(COL_RED + f"fatal: {message}" + COL_RESET, file=sys.stderr)
 
         #self.stream.write(message)
         #self.stream.flush()
-
-_handler = CustomHandler()
-_handler.setFormatter(logging.Formatter(
-    fmt="[%(asctime)s][%(name)s][%(levelname)s]: %(message)s",
-    datefmt="%Y.%m.%d-%H:%M:%S"
-))
-
-def spawn_logger(name: str) -> logging.Logger:
-    logger = logging.getLogger(name)
-    logger.propagate = False
-    logger.addHandler(_handler)
-    logger.setLevel(_get_current_level())
-    return logger

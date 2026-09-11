@@ -6,25 +6,22 @@ import os
 import sys
 import warnings
 
+from .actions import RootHelpAction
+from ..log import announce_optional_module_error
+
 try:
     import argcomplete
-except ImportError:
+except ImportError as e:
     argcomplete = None
+    announce_optional_module_error(e)
 
 from .commands import merge
 from .. import Mist, _package_name
 from ..errors import MistError
-from .. import log
 from .. import config
 from ..messages import *
 
-# TODO: pad to multiples
-
-def _parse_configuration_param(arg: str) -> tuple[str, str]:
-    SPLIT_BY = "="
-    assert SPLIT_BY in arg
-    parts = arg.split(SPLIT_BY, 1)
-    return parts[0].strip(), parts[1].strip()
+# TODO: switch to refs dir
 
 # TODO: --config-env=<name>=<envvar>, docs paths, -p --paginate, -P --no-pager, --work-tree=<path>, --no-lazy-fetch, --no-advice,
 # TODO: commands
@@ -38,37 +35,13 @@ ls-files
 ignore
 """
 
-class HelpAction(argparse.Action):
-    def __init__(self, option_strings, dest, commands=None, **kwargs):
-        self.commands = commands
-        super().__init__(option_strings, dest, **kwargs)
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        if option_string == "-h":
-            parser.print_usage()
-            parser.exit()
-        if option_string == "--help":
-            parser.print_help()
-            print("commands:")
-            for name, subparser in self.commands.items():
-                print(f"  {name:16}", end="")
-                if subparser.description:
-                    print(f" {subparser.description}", end="")
-                print()
-
-            parser.exit()
-
-        # default to error
-        parser.print_usage()
-        parser.exit(1)
-
 def build_parser(mist: Mist) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False, description="another stupid content tracker")
 
     subparsers = parser.add_subparsers(metavar="<command>", dest="command")
 
     from .commands import help as cmd_help
-    from .commands import init, config, remote, fetch, merge, clone, ls_remote, ls_files, pull
+    from .commands import init, config, remote, fetch, merge, clone, ls_remote, ls_files, pull, status
     command_parsers = {
         "help": cmd_help.build_parser(subparsers, mist),
         "config": config.build_parser(subparsers, mist),
@@ -78,18 +51,27 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
         "fetch": fetch.build_parser(subparsers, mist),
         "merge": merge.build_parser(subparsers, mist),
         "pull": pull.build_parser(subparsers, mist),
+        "status": status.build_parser(subparsers, mist),
         "ls-remote": ls_remote.build_parser(subparsers, mist),
         "ls-files": ls_files.build_parser(subparsers, mist),
     }
 
+    def parse_configuration_param(arg: str) -> tuple[str, str]:
+        SPLIT_BY = "="
+        if  SPLIT_BY not in arg:
+            parser.error("malformed configuration arg")
+        parts = arg.split(SPLIT_BY, 1)
+        return parts[0].strip(), parts[1].strip()
+
     from importlib.metadata import version
     parser.add_argument("-v", "--version", action="version", version=f"Mist {version(_package_name)}")
     help_group = parser.add_mutually_exclusive_group(required=False)
-    help_group.add_argument("-h", action=HelpAction, nargs=0, help="short help", commands=command_parsers)
-    help_group.add_argument("--help", action=HelpAction, nargs=0, help="extensive help", commands=command_parsers)
+    help_group.add_argument("-h", action=RootHelpAction, nargs=0, help="short help", commands=command_parsers)
+    help_group.add_argument("--help", action=RootHelpAction, nargs=0, help="extensive help", commands=command_parsers)
     parser.add_argument("-C", metavar="<path>")
-    parser.add_argument("-c", metavar="<name>=<value>", action="append", type=_parse_configuration_param)
+    parser.add_argument("-c", metavar="<name>=<value>", action="append", type=parse_configuration_param)
     parser.add_argument("--mist-dir", metavar="<path>", default=None)
+    parser.add_argument("--debug", action="store_true", default=False)
 
     #parser_checkout = subparsers.add_parser("checkout")
     #parser_checkout.add_argument("remote")
@@ -110,7 +92,8 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
     parser.set_defaults(parser=parser)
     return parser
 
-def _internal_run(arguments: list[str]):
+
+def run(arguments: list[str]):
     mist = Mist()
     parser = build_parser(mist)
 
@@ -125,6 +108,10 @@ def _internal_run(arguments: list[str]):
 
     if args.c:
         mist.config.args.settings = {t[0]: t[1] for t in args.c}
+        mist.config.args.commit()
+
+    if args.debug:
+        mist.config.args.set("core.debug", True)
         mist.config.args.commit()
 
     mist.set_working_dir(os.getcwd())
@@ -145,27 +132,3 @@ def _internal_run(arguments: list[str]):
 
     if previous_dir:
         os.chdir(previous_dir)
-
-def run(arguments: list[str]) -> int:
-    # returns exit code
-    try:
-        with warnings.catch_warnings(record=True) as recorded_warnings:
-            _internal_run(arguments)
-    except MistError as e:
-        log.error(str(e))
-        log.exception(e)
-        return 1
-    except NotImplementedError as e:
-        log.fatal(f"{type(e).__name__}: {str(e)}")
-        log.fatal("lazy fuck detected")
-        log.exception(e)
-        return 1
-    except Exception as e:
-        log.fatal(f"{type(e).__name__}: {str(e)}")
-        log.fatal("unrecoverable error")
-        log.exception(e)
-        return 1
-    finally:
-        for w in recorded_warnings:
-            log.warning(w.message)
-    return 0

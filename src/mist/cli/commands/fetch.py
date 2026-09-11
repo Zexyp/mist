@@ -1,14 +1,17 @@
 import argparse
+import logging
 import warnings
 from pprint import pformat
 
+from ..cli_utils import summon_subcommand
 from ..completors import RemoteCompleter
 from ... import Mist
-from .. import log
 
 # TODO: --[no-]all, --negotiate-only, -k --keep, --multiple, -p --prune, -P --prune-tags, -n --no-tags, -t --tags, --[no-]recurse-submodules, -j --jobs, -q --quiet, -v --verbose, --progress, -o --server-option, --[no-]stdin
 
 _DUMP_ENTRIES = False
+
+logger = logging.getLogger(__name__)
 
 def _report_progress(msg):
     raise NotImplementedError
@@ -18,7 +21,7 @@ def _report_progress(msg):
     print(f"\r{msg}", end="")
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("fetch", description="Download objects from another repository")
+    parser = summon_subcommand(subparsers, "fetch", description="Download objects from another repository")
     parser.add_argument("remote", metavar="<remote>", nargs='*').completer = RemoteCompleter(mist)
     parser.add_argument("--tags", action="store_true")
     parser.add_argument("--set-upstream", action="store_true")
@@ -48,7 +51,7 @@ def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
 
             if _DUMP_ENTRIES:
                 for e in result:
-                    log.debug(e)
+                    logger.debug(e)
 
     parser.set_defaults(func=func, parser=parser)
     return parser
