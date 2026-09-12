@@ -16,6 +16,7 @@ from ..utils import indent_list, MistEnum
 logger = logging.getLogger(__name__)
 
 # TODO: match user/artist
+# TODO: split yt and ytm
 
 class NotSupported(Exception):
     pass

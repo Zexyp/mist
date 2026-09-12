@@ -14,6 +14,8 @@ class DistinguishedId:
     source: str = None
     id: str = None
 
+# TODO: cache images
+
 # entry can be just a remote snapshot
 # or a local file description
 # or be full of metadata
@@ -308,7 +310,6 @@ class Mist:
                                                progress=lambda m: logger.debug(m))
         return entries
 
-    # TODO: add flag
     def list_files(self,
                    cached: bool = False,
                    modified: bool = False,

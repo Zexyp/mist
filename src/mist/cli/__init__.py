@@ -21,8 +21,6 @@ from ..errors import MistError
 from .. import config
 from ..messages import *
 
-# TODO: switch to refs dir
-
 # TODO: --config-env=<name>=<envvar>, docs paths, -p --paginate, -P --no-pager, --work-tree=<path>, --no-lazy-fetch, --no-advice,
 # TODO: commands
 """
@@ -71,7 +69,7 @@ def build_parser(mist: Mist) -> argparse.ArgumentParser:
     parser.add_argument("-C", metavar="<path>")
     parser.add_argument("-c", metavar="<name>=<value>", action="append", type=parse_configuration_param)
     parser.add_argument("--mist-dir", metavar="<path>", default=None)
-    parser.add_argument("--debug", action="store_true", default=False)
+    parser.add_argument("--debug", action="store_true", default=False, help=argparse.SUPPRESS)
 
     #parser_checkout = subparsers.add_parser("checkout")
     #parser_checkout.add_argument("remote")
