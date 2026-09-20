@@ -1,6 +1,8 @@
 import concurrent.futures
 import logging
 import os
+import threading
+import time
 from dataclasses import dataclass
 from typing import Callable
 from urllib.parse import urlsplit
@@ -23,6 +25,26 @@ _DUMP_DATA = False
 logger = logging.getLogger(__name__)
 
 # TODO: suppress ytdlp warning
+
+class RateLimiter:
+    def __init__(self, interval):
+        self.interval = interval
+        self.lock = threading.Lock()
+        self.next_allowed = 0.0
+
+    def wait(self):
+        with self.lock:
+            now = time.monotonic()
+
+            # Reserve the next available execution time
+            start_time = max(now, self.next_allowed)
+            self.next_allowed = start_time + self.interval
+
+        # Sleep outside the lock so other threads can reserve their slots
+        delay = start_time - now
+        if delay > 0:
+            logger.debug(f"limiter: sleeping for {delay} seconds")
+            time.sleep(delay)
 
 class MetadataPostProcessor(PostProcessor):
     def __init__(self, data: Entry, image_options: dict = None):
@@ -57,7 +79,8 @@ class BaseLogger:
         msg = strip_ansi(msg)
         logger.error(f"{self._PREFIX}{msg}")
 
-def _emtpy_hook(d: dict):
+def _empty_hook(d: dict):
+    #pprint(d)
     pass
     #d["status"]: {downloading, finished}
     #d["_percent_str"]:
@@ -76,9 +99,10 @@ def _emtpy_hook(d: dict):
     #d["eta"]:
     #d["speed"]:
 
-class YtPageProgressLogger(BaseLogger):
+class YtLogger(BaseLogger):
     def __init__(self, callback: Callable[[str], None]):
         self.callback = callback
+        raise NotImplementedError
 
     def info(self, msg):
         super().info(msg)
@@ -91,6 +115,18 @@ class YtPageProgressLogger(BaseLogger):
             self.callback(f"Page {m.group(1)}")
 
         # TODO: "Downloading 1429 items of 1429"
+
+class CallbackLogger(BaseLogger):
+    def __init__(self, callback: Callable[[str], None]):
+        self.callback = callback
+
+    def info(self, msg):
+        super().info(msg)
+
+        msg = strip_ansi(msg)
+
+        self.callback(msg)
+
 
 options_playlist_title: dict = {
     "extract_flat": True,
@@ -134,9 +170,14 @@ def get_playlist_title(url: str) -> str:
     assert info["_type"] == "playlist"
     return info["title"]
 
-def get_entries(url: str, progress: Callable[[str], None] = None, max_concurrency: int | None = None, retries: int = 0, delay: int = 0,
+def get_entries(url: str,
+                progress: Callable[[dict], None] = None,
+                max_concurrency: int | None = None,
+                metadata_retries: int = 0,
+                metadata_retry_delay: int = 0,
+                metadata_wait: int = 0,
                 start: int | None = None,
-                end: int | None = None) -> list[Entry]:
+                end: int | None = None,) -> list[Entry]:
     if max_concurrency is not None:
         logger.debug(f"concurrency: {max_concurrency}")
 
@@ -144,13 +185,22 @@ def get_entries(url: str, progress: Callable[[str], None] = None, max_concurrenc
                                start=start,
                                end=end)
 
+    if metadata_wait:
+        metadata_limiter = RateLimiter(metadata_wait)
+
     def metadata_collection(e: Entry):
+        if metadata_limiter: metadata_limiter.wait()
+
         from . import metadata
-        oe = metadata.obtain(metadata.detect_source(url), e.id, retries=retries, delay=delay)
+        oe = metadata.obtain(metadata.detect_source(url), e.id,
+                             retries=metadata_retries,
+                             delay=metadata_retry_delay)
         oe.id = e.id
         return oe
 
     output = []
+    if progress:
+        progress("starting")
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrency) as executor:
         futures = [executor.submit(metadata_collection, e) for e in entries]
 
@@ -159,19 +209,19 @@ def get_entries(url: str, progress: Callable[[str], None] = None, max_concurrenc
                 output.append(future.result())
             except concurrent.futures.TimeoutError:
                 logger.error("this took too long...")
-
+    if progress:
+        progress("finished")
     return output
 
-def get_entries_fast(url: str, progress: Callable[[str], None] = None,
+def get_entries_fast(url: str, progress: Callable[[dict], None] = None,
                      start: int | None = None,
                      end: int | None = None) -> list[Entry]:
     opts = dict(options_entries_flat)
     if progress:
         logger.debug("progress callback will be used")
-        opts["logger"] = YtPageProgressLogger(progress)
+        opts["logger"] = CallbackLogger(lambda x: progress({"message": x}))
+        opts["progress_hooks"] = [progress]
 
-
-    opts["progress_hooks"] = [_emtpy_hook]
     if start is not None:
         opts["playliststart"] = start
     if end is not None:
@@ -207,13 +257,19 @@ def extract_flat_entry(e: dict) -> Entry:
 
     return entry
 
-def download_entries(platform: Source, entries: list[Entry], destination_dir: str, max_concurrency: int | None = None,
+def download_entries(platform: Source, entries: list[Entry], destination_dir: str,
+                     progress: Callable[[dict], None] = None,
+                     max_concurrency: int | None = None,
                      image_options: dict = None):
     logger.debug(f"destination: {destination_dir}")
     if max_concurrency is not None:
         logger.debug(f"concurrency: {max_concurrency}")
 
     opts = dict(options_download)
+    if progress:
+        logger.debug("progress callback will be used")
+        opts["logger"] = CallbackLogger(lambda x: progress({"message": x}))
+        opts["progress_hooks"] = [progress]
 
     def download_item(item: Entry):
         lopts = dict(opts)

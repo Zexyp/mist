@@ -94,14 +94,19 @@ Available values are `auto`, `force` and `off`.
 #### `core.version`
 Indicates which version of the tool initialized the repository.
 
-#### `core.retries`
-How many times to retry after reaching rate limit.
-
-#### `core.delay`
-Delay after which to retry when rate limit is hit. Every retry doubles the delay (base value for exponential backoff).
-
 #### `core.debug`
 Boolean value to enable debug output.
+
+---
+
+#### `metadata.retries`
+How many times to retry after reaching rate limit.
+
+#### `metadata.retryDelay`
+Delay in seconds after which to retry when rate limit is hit. Every retry doubles the delay (base value for exponential backoff).
+
+#### `metadata.wait`
+How long to wait in seconds before gathering more data.
 
 ---
 
@@ -162,4 +167,5 @@ Wow, I really need to use [YapTeX](https://github.com/Zexyp/YapTeX) for these do
 ## TODOs
 - `remote.<name>.skipFetchAll`
 - `remote.<name>.items`
+- `advice.`
 - use yaptex

@@ -13,12 +13,8 @@ _DUMP_ENTRIES = False
 
 logger = logging.getLogger(__name__)
 
-def _report_progress(msg):
-    raise NotImplementedError
-    if msg == "finished":
-        print()
-        return
-    print(f"\r{msg}", end="")
+def _report_progress(data):
+    print(data)
 
 def build_parser(subparsers, mist: Mist) -> argparse.ArgumentParser:
     parser = summon_subcommand(subparsers, "fetch", description="Download objects from another repository")

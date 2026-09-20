@@ -33,6 +33,8 @@ class Entry:
     artist_links: list[tuple[str, str]] = None
     visited: set[str] = None
     artwork: str = None
+    artists: list[str] = None
+    album_name: str = None
 
 class FileEntry(Entry):
     file: str = None
@@ -76,10 +78,10 @@ def _sanitize_url(url: str) -> str:
     url = url_strip_utm(url)
     return url
 
-def _merge_entry(original: Entry, new: Entry, prune_tags: bool, ignore_tags: bool, is_fast: bool) -> Entry:
+def _merge_entry(original: Entry, new: Entry, prune_tags: bool, ignore_tags: bool) -> Entry:
     assert original.id == new.id
 
-    if not is_fast:
+    if ignore_tags:
         original.name = new.name
         original.title = new.title
         original.genre = new.genre
@@ -99,6 +101,31 @@ def _merge_entry(original: Entry, new: Entry, prune_tags: bool, ignore_tags: boo
             original.visited = new.visited
 
     return original
+
+def _compare_entry(a: Entry, b: Entry):
+    if a.title != b.title:
+        return False # title mismatch
+    warnings.warn("TODO: finish entry comparison")
+    return True
+
+def _merge_list(to_list: list[Entry], from_list: list[Entry], prune_tags: bool, ignore_tags: bool) -> list[Entry]:
+    merged = []
+    if to_list:
+        for existing in to_list:
+            new_for_merging = [i for i in from_list if i.id == existing.id]
+            assert len(new_for_merging) <= 1
+            if new_for_merging:
+                new = new_for_merging[0]
+                from_list.remove(new)
+                # forcing uses the whole new item
+                merged.append(new if from_list else _merge_entry(existing, new,
+                                                                 prune_tags=prune_tags,
+                                                                 ignore_tags=ignore_tags))
+            else:
+                merged.append(existing)
+
+    merged[:0] = from_list  # prepend existing so they might get overwritten if duplicates occurred
+    return merged
 
 def _configure_logger(cfg: ConfigReader):
     # TODO: config file
@@ -255,7 +282,7 @@ class Mist:
               force: bool = False,
               prune: bool = False,
               prune_tags: bool = False,
-              progress: Callable[[str], None] = None) -> list[Entry]:
+              progress: Callable[[dict], None] = None) -> list[Entry]:
         """returns a list of locally available entries"""
         self._assert_remote(remote)
         remote_cfg = self.get_remote(remote)
@@ -270,32 +297,17 @@ class Mist:
             items = shenanigans.get_entries(list_url,
                                             progress=progress,
                                             max_concurrency=self._get_concurrency(),
-                                            retries=self.config.active.getint("core.retries", 2),
-                                            delay=self.config.active.getint("core.delay", 5),
+                                            metadata_retries=self.config.active.getint("metadata.retries", 2),
+                                            metadata_retry_delay=self.config.active.getint("metadata.retryDelayretryDelay", 30),
+                                            metadata_wait=self.config.active.getint("metadata.wait", 1),
                                             start=remote_cfg.start, end=remote_cfg.end)
         else:
             items = shenanigans.get_entries_fast(list_url,
                                                  progress=progress,
                                                  start=remote_cfg.start, end=remote_cfg.end)
 
-        loaded = not prune and self.storage.get_remote_entries(source, remote) or []
-
-        # TODO: abstract
-
-        merged = []
-        if loaded:
-            for existing in loaded:
-                new_for_merging = [i for i in items if i.id == existing.id]
-                if new_for_merging:
-                    new = new_for_merging[0]
-                    items.remove(new)
-                    # forcing uses the whole new item
-                    merged.append(new if force else _merge_entry(existing, new, prune_tags=prune_tags, ignore_tags=not tags, is_fast=not tags))
-                else:
-                    merged.append(existing)
-
-        merged[:0] = items # prepend existing so they might get overwritten if duplicates occurred
-        loaded = merged
+        loaded = not prune and self.storage.get_remote_entries(source, remote) or []t
+        loaded = _merge_list(loaded, items, prune_tags=prune_tags, ignore_tags=not tags)
 
         if not dry_run:
             self.storage.save_remote_entries_direct(source, remote, loaded)
@@ -368,7 +380,7 @@ class Mist:
                 assert len(results) == 1
                 ent_src = results[0][0]
                 ent_id = results[0][1]
-                if worktree_entries[i].title != self.storage.get_object(ent_src, ent_id).title:
+                if not _compare_entry(worktree_entries[i], self.storage.get_object(ent_src, ent_id)):
                     output.add((ent_src, ent_id, ListItemFlag.MODIFIED))
 
         flat = {}
@@ -378,9 +390,7 @@ class Mist:
 
     # TODO: remoteS
     # strategy: dumb, ours, manual, theirs
-    def merge(self, remotes: list[str], progress: Callable = None, strategy: str = None) -> list[Entry]:
-        if progress:
-            raise NotImplementedError("merge: progress reporting not implemented")
+    def merge(self, remotes: list[str], progress: Callable[[dict], None] = None, strategy: str = None) -> list[Entry]:
         if strategy:
             raise NotImplementedError("merge: strategy not implemented")
 
@@ -399,6 +409,7 @@ class Mist:
         entries_to_download = [e for e in entries if e.id in missing_ids]
         if entries_to_download:
             shenanigans.download_entries(source, entries_to_download,
+                                         progress=progress,
                                          destination_dir=self.worktree_dir,
                                          max_concurrency=self._get_concurrency(),
                                          image_options=image_options)
